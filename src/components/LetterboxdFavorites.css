@@ -1,0 +1,137 @@
+.lbf {
+  --lbf-gap: 0.65rem;
+  --lbf-radius: 4px;
+  --lbf-overlay: rgba(20, 24, 28, 0.88);
+  --lbf-text: #e6eef5;
+  --lbf-muted: #9ab;
+  --lbf-accent: #00c030;
+  --lbf-poster-bg: #2c3440;
+  width: 100%;
+  font-family:
+    Graphik, 'Graphik Webfont', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+}
+
+.lbf-status {
+  margin: 0;
+  color: var(--lbf-muted);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.lbf-status--error {
+  color: #ff6675;
+}
+
+.lbf-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--lbf-gap);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lbf-row--left {
+  justify-content: flex-start;
+}
+
+.lbf-row--center {
+  justify-content: center;
+}
+
+.lbf-row--right {
+  justify-content: flex-end;
+}
+
+.lbf-row__item {
+  flex: 0 0 auto;
+  width: calc((100% - (var(--lbf-gap) * 3)) / 4);
+  max-width: 160px;
+}
+
+.lbf-row[data-count='4'] .lbf-row__item {
+  max-width: none;
+}
+
+.lbf-card {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--lbf-radius);
+  background: var(--lbf-poster-bg);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  text-decoration: none;
+  color: inherit;
+}
+
+.lbf-card__poster {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lbf-card__fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0.75rem;
+  color: var(--lbf-text);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.lbf-card__fallback[hidden] {
+  display: none;
+}
+
+.lbf-card__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.2rem;
+  padding: 0.7rem 0.65rem;
+  background: var(--lbf-overlay);
+  color: var(--lbf-text);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.lbf-card:hover .lbf-card__overlay,
+.lbf-card:focus-visible .lbf-card__overlay {
+  opacity: 1;
+}
+
+.lbf-card__title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.lbf-card__meta,
+.lbf-card__rating,
+.lbf-card__link {
+  font-size: 0.72rem;
+  color: var(--lbf-muted);
+}
+
+.lbf-card__rating {
+  color: #ffc800;
+  letter-spacing: 0.04em;
+}
+
+.lbf-card__link {
+  color: var(--lbf-accent);
+  margin-top: 0.2rem;
+}
+
+.lbf-card:focus-visible {
+  outline: 2px solid var(--lbf-accent);
+  outline-offset: 2px;
+}

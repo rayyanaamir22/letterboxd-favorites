@@ -1,0 +1,133 @@
+:root {
+  color-scheme: dark;
+  --bg: #14181c;
+  --panel: #1b2228;
+  --border: #2c3440;
+  --text: #def;
+  --muted: #9ab;
+  --accent: #00c030;
+  --sans: Graphik, 'Graphik Webfont', system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font: 16px/1.5 var(--sans);
+  background: var(--bg);
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+a {
+  color: var(--accent);
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: #0e1114;
+}
+
+.demo {
+  width: min(920px, 100%);
+  margin: 0 auto;
+  padding: 48px 20px 80px;
+}
+
+.demo-kicker {
+  margin: 0 0 8px;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.demo-header h1 {
+  margin: 0 0 12px;
+  font-size: 2.4rem;
+  letter-spacing: -0.04em;
+}
+
+.demo-lead {
+  margin: 0;
+  color: var(--muted);
+  max-width: 62ch;
+}
+
+.demo-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: end;
+  margin: 28px 0 12px;
+}
+
+.demo-field {
+  display: grid;
+  gap: 6px;
+}
+
+.demo-field span,
+.demo-align legend {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.demo-field input {
+  min-width: 220px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+
+.demo-controls button {
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #042;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.demo-align {
+  display: flex;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.demo-align label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  text-transform: capitalize;
+}
+
+.demo-profile {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.demo-stage {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}

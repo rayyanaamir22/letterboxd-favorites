@@ -161,6 +161,19 @@ All exported from both entry points. The component shows a message for each; `ge
 | `LetterboxdBlockedError` | Cloudflare challenge or 403 / 503 |
 | `LetterboxdFetchError` | Any other failure (`.status` when there is one) |
 
+## Fetching with letterboxdpy (experimental)
+
+Letterboxd's Cloudflare protection blocks plain `fetch`/`curl` requests with a 403. [letterboxdpy](https://github.com/nmcassa/letterboxdpy) gets through because it fetches with `curl_cffi`, which uses Chrome-like TLS. [`examples/letterboxdpy-service`](examples/letterboxdpy-service) is a ~50-line Python server that returns a profile's HTML using it, so it can be used as the `corsProxy`:
+
+```tsx
+<LetterboxdFavorites
+  username="nmcassa"
+  corsProxy={(url) => `http://localhost:8787${new URL(url).pathname}`}
+/>
+```
+
+This needs Python 3.10+ running next to your site, and it can stop working whenever Letterboxd or Cloudflare changes their checks. Treat it as an example, not a guarantee.
+
 ## How it works
 
 1. Request `https://letterboxd.com/{username}/`. The trailing slash matters: the slash-less URL redirects, and Cloudflare often challenges the redirect.

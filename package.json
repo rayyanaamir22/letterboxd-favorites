@@ -24,7 +24,8 @@
     "build": "tsc -b && vite build && cp src/styles.css dist/styles.css",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "playground": "vite playground/app"
   },
   "peerDependencies": {
     "react": ">=18",

@@ -163,7 +163,7 @@ All exported from both entry points. The component shows a message for each; `ge
 
 ## Fetching with letterboxdpy (experimental)
 
-Letterboxd's Cloudflare protection blocks plain `fetch`/`curl` requests with a 403. [letterboxdpy](https://github.com/nmcassa/letterboxdpy) gets through because it fetches with `curl_cffi`, which uses Chrome-like TLS. [`examples/letterboxdpy-service`](examples/letterboxdpy-service) is a ~50-line Python server that returns a profile's HTML using it, so it can be used as the `corsProxy`:
+Letterboxd's Cloudflare protection blocks plain `fetch`/`curl` requests with a 403. [letterboxdpy](https://github.com/nmcassa/letterboxdpy) gets through because it fetches with `curl_cffi`, which uses Chrome-like TLS. [`playground/letterboxdpy-service`](playground/letterboxdpy-service) is a ~50-line Python server that returns a profile's HTML using it, so it can be used as the `corsProxy`:
 
 ```tsx
 <LetterboxdFavorites

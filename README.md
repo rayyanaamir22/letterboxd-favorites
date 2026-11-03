@@ -2,6 +2,8 @@
 
 Show a Letterboxd user's four favorite films in a React or Next.js app. Letterboxd has no public API, so favorites are scraped from the public profile page on every load.
 
+![Playground Demo](public/playground.png)
+
 - Fetches fresh on every page load (nothing is cached).
 - Works in client-only React (through a CORS proxy you provide) and in Next.js Server Components.
 - 1–3 favorites can be aligned `left`, `center` or `right`.

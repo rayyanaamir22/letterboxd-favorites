@@ -1,90 +1,150 @@
-import { useEffect, useState } from 'react'
-import { clsx } from 'clsx'
+import { useEffect, useRef, useState } from 'react'
+import {
+  InvalidUsernameError,
+  LetterboxdBlockedError,
+  MissingCorsProxyError,
+  UserNotFoundError,
+} from '../errors'
 import type { Film, LetterboxdFavoritesProps } from '../types'
-import { UserNotFoundError } from '../utils/fetcher'
-import { getFavorites } from '../utils/getFavorites'
+import { cn } from '../utils/cn'
+import { fetchFavoritesClient } from '../utils/client'
 import { FilmCard } from './FilmCard'
-import './LetterboxdFavorites.css'
+
+type Result =
+  | { username: string; films: Film[]; error: null }
+  | { username: string; films: null; error: Error }
+
+function defaultErrorMessage(error: Error, username: string): string {
+  if (error instanceof UserNotFoundError) {
+    return `Letterboxd user “${username}” not found.`
+  }
+  if (error instanceof LetterboxdBlockedError) {
+    return 'Letterboxd blocked the request. Try again later.'
+  }
+  if (error instanceof MissingCorsProxyError) {
+    return 'A corsProxy is required to load favorites in the browser.'
+  }
+  if (error instanceof InvalidUsernameError) {
+    return `“${username}” is not a valid Letterboxd username.`
+  }
+  return 'Couldn’t load Letterboxd favorites.'
+}
+
+function devWarn(message: string): void {
+  const env = (globalThis as { process?: { env?: { NODE_ENV?: string } } })
+    .process?.env?.NODE_ENV
+  if (env !== 'production') console.warn(`[react-letterboxd-favorites] ${message}`)
+}
 
 export function LetterboxdFavorites({
   username,
   align = 'left',
-  className,
-  emptyMessage = 'This profile has no favorites published.',
+  films: seed,
+  live = seed === undefined,
   corsProxy,
-  films: initialFilms,
-  live = true,
+  className,
+  classNames,
+  emptyMessage = 'This profile has no favorites published.',
+  loadingMessage = 'Loading favorites…',
+  errorMessage,
 }: LetterboxdFavoritesProps) {
-  const [request, setRequest] = useState<{
-    username: string
-    films: Film[]
-    error: string | null
-  } | null>(null)
+  const [result, setResult] = useState<Result | null>(null)
+
+  // A new inline proxy function on every parent render must not trigger a
+  // refetch, so only string proxies are effect dependencies.
+  const proxyRef = useRef(corsProxy)
+  useEffect(() => {
+    proxyRef.current = corsProxy
+  })
+  const proxyKey = typeof corsProxy === 'string' ? corsProxy : undefined
 
   useEffect(() => {
-    if (!live) return
+    if (!live) {
+      if (seed === undefined) devWarn('`live` is false and no `films` were given.')
+      return
+    }
 
-    let cancelled = false
-    getFavorites(username, { corsProxy })
+    const controller = new AbortController()
+    fetchFavoritesClient(username, {
+      corsProxy: proxyRef.current,
+      signal: controller.signal,
+    })
       .then((films) => {
-        if (!cancelled) setRequest({ username, films, error: null })
+        if (!controller.signal.aborted) {
+          setResult({ username, films, error: null })
+        }
       })
       .catch((reason: unknown) => {
-        if (cancelled) return
-        const message =
-          reason instanceof UserNotFoundError
-            ? reason.message
-            : reason instanceof Error
-              ? reason.message
-              : 'Could not load Letterboxd favorites.'
-        setRequest({ username, films: [], error: message })
+        if (controller.signal.aborted) return
+        const error = reason instanceof Error ? reason : new Error(String(reason))
+        setResult({ username, films: null, error })
       })
 
-    return () => {
-      cancelled = true
-    }
-  }, [username, corsProxy, live])
+    return () => controller.abort()
+    // `seed` only matters for the dev warning above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [username, live, proxyKey])
 
-  const films = live
-    ? request?.username === username && request.films.length > 0
-      ? request.films
-      : (initialFilms ?? [])
-    : (initialFilms ?? [])
+  const current = result?.username === username ? result : null
 
-  const status = !live
-    ? 'ready'
-    : request?.username !== username
-      ? 'loading'
-      : request.error && films.length === 0
-        ? 'error'
-        : 'ready'
+  let films: Film[] = []
+  let state: 'loading' | 'ready' | 'empty' | 'error'
+  let error: Error | null = null
 
-  const error = request?.username === username ? request.error : null
+  if (!live) {
+    films = seed ?? []
+    state = films.length ? 'ready' : 'empty'
+  } else if (current?.films) {
+    films = current.films
+    state = films.length ? 'ready' : 'empty'
+  } else if (current?.error && seed === undefined) {
+    error = current.error
+    state = 'error'
+  } else if (seed !== undefined) {
+    // Seed shown while loading, and kept if the refetch fails.
+    films = seed
+    state = films.length ? 'ready' : 'empty'
+  } else {
+    state = 'loading'
+  }
+
+  const statusClass = cn('lbf-status', classNames?.status)
 
   return (
-    <div className={clsx('lbf', className)} data-username={username}>
-      {status === 'loading' ? (
-        <p className="lbf-status">Loading favorites…</p>
-      ) : null}
-
-      {status === 'error' ? (
-        <p className="lbf-status lbf-status--error" role="alert">
-          {error}
+    <div
+      className={cn('lbf', className, classNames?.root)}
+      data-username={username}
+      data-state={state}
+    >
+      {state === 'loading' ? (
+        <p className={statusClass} role="status">
+          {loadingMessage}
         </p>
       ) : null}
 
-      {status === 'ready' && films.length === 0 ? (
-        <p className="lbf-status">{emptyMessage}</p>
+      {state === 'empty' ? (
+        <p className={statusClass} role="status">
+          {emptyMessage}
+        </p>
       ) : null}
 
-      {status === 'ready' && films.length > 0 ? (
+      {state === 'error' && error ? (
+        <p className={cn(statusClass, 'lbf-status--error')} role="alert">
+          {errorMessage ? errorMessage(error) : defaultErrorMessage(error, username)}
+        </p>
+      ) : null}
+
+      {state === 'ready' ? (
         <ul
-          className={clsx('lbf-row', `lbf-row--${align}`)}
+          className={cn('lbf-row', `lbf-row--${align}`, classNames?.list)}
           data-count={films.length}
         >
           {films.map((film) => (
-            <li key={film.id || film.slug || film.title} className="lbf-row__item">
-              <FilmCard film={film} />
+            <li
+              key={film.id || film.slug}
+              className={cn('lbf-row__item', classNames?.item)}
+            >
+              <FilmCard film={film} classNames={classNames} />
             </li>
           ))}
         </ul>

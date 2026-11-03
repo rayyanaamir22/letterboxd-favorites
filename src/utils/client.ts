@@ -1,11 +1,10 @@
 import type { FetchFavoritesOptions, Film } from '../types'
 import { fetchProfileHtml } from './fetcher'
-import { parseFavoritesAsync } from './parser'
+import { parseFavoritesDom } from './parseDom'
 
-export async function getFavorites(
+export async function fetchFavoritesClient(
   username: string,
   options: FetchFavoritesOptions = {},
 ): Promise<Film[]> {
-  const html = await fetchProfileHtml(username, options)
-  return parseFavoritesAsync(html)
+  return parseFavoritesDom(await fetchProfileHtml(username, options))
 }

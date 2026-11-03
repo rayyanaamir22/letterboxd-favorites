@@ -1,44 +1,55 @@
-import { clsx } from 'clsx'
-import type { Film } from '../types'
+import { useState } from 'react'
+import type { FavoritesClassNames, Film } from '../types'
+import { cn } from '../utils/cn'
 
 interface FilmCardProps {
   film: Film
-  className?: string
+  classNames?: FavoritesClassNames
 }
 
-export function FilmCard({ film, className }: FilmCardProps) {
-  const yearLabel = film.year ? String(film.year) : null
+export function FilmCard({ film, classNames }: FilmCardProps) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const showPoster = Boolean(film.posterUrl) && !imageFailed
+  const label = film.year ? `${film.title} (${film.year})` : film.title
 
   return (
     <a
-      className={clsx('lbf-card', className)}
+      className={cn('lbf-card', classNames?.card)}
       href={film.url}
       target="_blank"
       rel="noopener noreferrer"
+      aria-label={`${label} on Letterboxd`}
     >
-      {film.posterUrl ? (
+      {showPoster ? (
         <img
-          className="lbf-card__poster"
-          src={film.posterUrl}
+          className={cn('lbf-card__poster', classNames?.poster)}
+          src={film.posterUrl ?? undefined}
           alt=""
           loading="lazy"
-          onError={(event) => {
-            event.currentTarget.style.display = 'none'
-            const fallback = event.currentTarget.nextElementSibling
-            if (fallback instanceof HTMLElement) fallback.hidden = false
-          }}
+          width={230}
+          height={345}
+          onError={() => setImageFailed(true)}
         />
-      ) : null}
-      <div className="lbf-card__fallback" hidden={Boolean(film.posterUrl)}>
-        {film.title}
-      </div>
-      <span className="lbf-card__overlay">
-        <span className="lbf-card__title">{film.title}</span>
-        {yearLabel ? <span className="lbf-card__meta">{yearLabel}</span> : null}
-        {film.rating ? (
-          <span className="lbf-card__rating">{film.rating}</span>
+      ) : (
+        <span className={cn('lbf-card__fallback', classNames?.fallback)}>
+          {film.title}
+        </span>
+      )}
+      <span
+        className={cn('lbf-card__overlay', classNames?.overlay)}
+        aria-hidden="true"
+      >
+        <span className={cn('lbf-card__title', classNames?.title)}>
+          {film.title}
+        </span>
+        {film.year ? (
+          <span className={cn('lbf-card__year', classNames?.year)}>
+            {film.year}
+          </span>
         ) : null}
-        <span className="lbf-card__link">View on Letterboxd</span>
+        <span className={cn('lbf-card__cta', classNames?.cta)}>
+          View on Letterboxd
+        </span>
       </span>
     </a>
   )

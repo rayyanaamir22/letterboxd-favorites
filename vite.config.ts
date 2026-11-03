@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import dts from 'vite-plugin-dts'
 import { resolve } from 'path'
@@ -11,8 +11,13 @@ export default defineConfig({
     react(),
     dts({
       tsconfigPath: resolve(import.meta.dirname, 'tsconfig.app.json'),
-      include: ['src/index.ts', 'src/types.ts', 'src/components', 'src/utils'],
-      exclude: ['src/App.tsx', 'src/main.tsx'],
+      include: ['src'],
+      exclude: [
+        'src/App.tsx',
+        'src/main.tsx',
+        'src/__tests__',
+        'src/__fixtures__',
+      ],
     }),
   ],
   server: {
@@ -37,30 +42,32 @@ export default defineConfig({
       },
     },
   },
+  test: {
+    environment: 'jsdom',
+    include: ['src/__tests__/**/*.test.{ts,tsx}'],
+  },
   build: {
+    copyPublicDir: false,
     lib: {
-      entry: resolve(import.meta.dirname, 'src/index.ts'),
-      name: 'LetterboxdFavorites',
-      fileName: (format) =>
-        format === 'es'
-          ? 'letterboxd-favorites.js'
-          : 'letterboxd-favorites.cjs',
+      entry: {
+        index: resolve(import.meta.dirname, 'src/index.ts'),
+        server: resolve(import.meta.dirname, 'src/server.ts'),
+      },
       formats: ['es', 'cjs'],
+      fileName: (format, name) => `${name}.${format === 'es' ? 'js' : 'cjs'}`,
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime', 'cheerio', 'clsx'],
+      external: [
+        'react',
+        'react-dom',
+        'react/jsx-runtime',
+        'cheerio',
+        'clsx',
+        'tailwind-merge',
+      ],
       output: {
-        globals: {
-          react: 'React',
-          'react-dom': 'ReactDOM',
-          'react/jsx-runtime': 'jsxRuntime',
-          cheerio: 'cheerio',
-          clsx: 'clsx',
-        },
-        assetFileNames: (asset) =>
-          asset.names?.[0]?.endsWith('.css')
-            ? 'letterboxd-favorites.css'
-            : '[name][extname]',
+        // Rollup strips module-level directives, so add it back to the client entry only.
+        banner: (chunk) => (chunk.name === 'index' ? '"use client";' : ''),
       },
     },
   },

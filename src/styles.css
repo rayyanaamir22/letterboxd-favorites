@@ -3,9 +3,10 @@
   --lbf-radius: 4px;
   --lbf-overlay: rgba(20, 24, 28, 0.88);
   --lbf-text: #e6eef5;
-  --lbf-muted: #9ab;
+  --lbf-muted: #99aabb;
   --lbf-accent: #00c030;
   --lbf-poster-bg: #2c3440;
+  --lbf-max-poster-width: none;
   width: 100%;
   font-family:
     Graphik, 'Graphik Webfont', -apple-system, BlinkMacSystemFont, 'Segoe UI',
@@ -45,14 +46,11 @@
   justify-content: flex-end;
 }
 
+/* Same poster width for any count: a quarter of the row minus the gaps. */
 .lbf-row__item {
   flex: 0 0 auto;
   width: calc((100% - (var(--lbf-gap) * 3)) / 4);
-  max-width: 160px;
-}
-
-.lbf-row[data-count='4'] .lbf-row__item {
-  max-width: none;
+  max-width: var(--lbf-max-poster-width);
 }
 
 .lbf-card {
@@ -78,15 +76,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   height: 100%;
   padding: 0.75rem;
   color: var(--lbf-text);
   font-size: 0.8rem;
   text-align: center;
-}
-
-.lbf-card__fallback[hidden] {
-  display: none;
 }
 
 .lbf-card__overlay {
@@ -108,25 +103,32 @@
   opacity: 1;
 }
 
+/* Touch devices: no overlay, tapping the poster follows the link. */
+@media (hover: none) {
+  .lbf-card:not(:focus-visible) .lbf-card__overlay {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lbf-card__overlay {
+    transition: none;
+  }
+}
+
 .lbf-card__title {
   font-size: 0.85rem;
   font-weight: 600;
   line-height: 1.25;
 }
 
-.lbf-card__meta,
-.lbf-card__rating,
-.lbf-card__link {
+.lbf-card__year,
+.lbf-card__cta {
   font-size: 0.72rem;
   color: var(--lbf-muted);
 }
 
-.lbf-card__rating {
-  color: #ffc800;
-  letter-spacing: 0.04em;
-}
-
-.lbf-card__link {
+.lbf-card__cta {
   color: var(--lbf-accent);
   margin-top: 0.2rem;
 }

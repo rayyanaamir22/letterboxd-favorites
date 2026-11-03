@@ -1,45 +1,62 @@
 export type FavoritesAlign = 'left' | 'center' | 'right'
 
 export interface Film {
+  /** Letterboxd film id; falls back to the slug. */
   id: string
+  /** Title without the "(year)" suffix. */
   title: string
   year: number | null
   slug: string
+  /** https://letterboxd.com/film/{slug}/ */
   url: string
   posterUrl: string | null
-  /** User or community rating, when present on the profile markup. */
-  rating: string | null
 }
 
-export type CorsProxy = string | ((url: string) => string)
+/**
+ * - `string`: prefix, the encoded Letterboxd URL is appended,
+ *   e.g. `https://my-proxy.example/?url=`
+ * - `function`: maps the Letterboxd URL to the request URL
+ */
+export type CorsProxy = string | ((letterboxdUrl: string) => string)
 
 export interface FetchFavoritesOptions {
-  /**
-   * Client-side CORS workaround. Ignored when `fetch` already has same-origin access
-   * (Vite demo proxy, Next.js Route Handler, etc.).
-   *
-   * - `string`: prefix, e.g. `https://api.allorigins.win/raw?url=`
-   * - `function`: maps the Letterboxd URL to the request URL
-   */
+  /** Browser only. Required there; ignored on the server. */
   corsProxy?: CorsProxy
-  /** Override `fetch`. Useful in tests or Next.js server components. */
+  /** Override `fetch`. Useful in tests. */
   fetch?: typeof fetch
-  /** Extra request headers (honoured in Node / SSR; browsers ignore `User-Agent`). */
+  /** Extra request headers (server only; browsers ignore `User-Agent`). */
   headers?: HeadersInit
+  signal?: AbortSignal
+}
+
+export interface FavoritesClassNames {
+  root?: string
+  list?: string
+  item?: string
+  card?: string
+  poster?: string
+  fallback?: string
+  overlay?: string
+  title?: string
+  year?: string
+  cta?: string
+  status?: string
 }
 
 export interface LetterboxdFavoritesProps {
   username: string
   /** How to pack 1–3 posters in the parent. Four posters always fill the row. */
   align?: FavoritesAlign
-  className?: string
-  emptyMessage?: string
-  corsProxy?: CorsProxy
-  /**
-   * Server-fetched films for SSR / RSC. The client still refreshes on mount
-   * so favorites stay current after a full page load.
-   */
+  /** Server-fetched seed for SSR / RSC. */
   films?: Film[]
-  /** Skip the client refetch (use when the parent already fetched on the server). */
+  /** Refetch after mount. Defaults to `films === undefined`. */
   live?: boolean
+  /** Required for a browser fetch when `live`. */
+  corsProxy?: CorsProxy
+  /** Shorthand for `classNames.root`. */
+  className?: string
+  classNames?: FavoritesClassNames
+  emptyMessage?: string
+  loadingMessage?: string
+  errorMessage?: (error: Error) => string
 }

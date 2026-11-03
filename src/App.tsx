@@ -15,7 +15,13 @@ export default function App() {
   const [username, setUsername] = useState('nmcassa')
   const [align, setAlign] = useState<FavoritesAlign>('left')
 
-  const profileHref = useMemo(() => profileUrl(username), [username])
+  const profileHref = useMemo(() => {
+    try {
+      return profileUrl(username)
+    } catch {
+      return null
+    }
+  }, [username])
 
   function load(event: FormEvent) {
     event.preventDefault()
@@ -75,9 +81,13 @@ export default function App() {
 
       <p className="demo-profile">
         Source:{' '}
-        <a href={profileHref} target="_blank" rel="noopener noreferrer">
-          {profileHref}
-        </a>
+        {profileHref ? (
+          <a href={profileHref} target="_blank" rel="noopener noreferrer">
+            {profileHref}
+          </a>
+        ) : (
+          'invalid username'
+        )}
       </p>
 
       <section className="demo-stage" aria-label="Favorites preview">

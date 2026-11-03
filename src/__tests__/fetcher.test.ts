@@ -71,6 +71,11 @@ describe('classifyResponse', () => {
     expect(() => classifyResponse(200, '<html>hi</html>', 'foo')).toThrow(LetterboxdFetchError)
   })
 
+  it('does not mistake Cloudflare\'s normal-page script for a challenge', () => {
+    const page = `${fourFavorites}<script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script>`
+    expect(classifyResponse(200, page, 'foo')).toBe(page)
+  })
+
   it('returns the HTML on success', () => {
     expect(classifyResponse(200, fourFavorites, 'foo')).toBe(fourFavorites)
   })

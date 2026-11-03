@@ -113,8 +113,10 @@ export function classifyResponse(
   return html
 }
 
+// Not `challenge-platform`: Cloudflare injects /cdn-cgi/challenge-platform/ scripts
+// into normal pages too.
 function isChallengePage(html: string): boolean {
-  return /just a moment\.\.\.|cf-chl|challenge-platform/i.test(html)
+  return /<title>\s*just a moment\.\.\.|cf-chl/i.test(html)
 }
 
 function isNotFoundPage(html: string): boolean {

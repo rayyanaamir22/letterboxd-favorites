@@ -69,10 +69,12 @@ function filmIdFromIdentifier(raw: string | undefined): string {
 }
 
 function splitTitleYear(value: string): { title: string; year: number | null } {
-  const match = TITLE_YEAR.exec(value.trim())
-  if (!match) return { title: value.trim(), year: null }
+  // Letterboxd uses non-breaking spaces in some titles.
+  const clean = value.replace(/\s+/g, ' ').trim()
+  const match = TITLE_YEAR.exec(clean)
+  if (!match) return { title: clean, year: null }
   return {
-    title: match[1]?.trim() ?? value.trim(),
+    title: match[1]?.trim() ?? clean,
     year: match[2] ? Number(match[2]) : null,
   }
 }

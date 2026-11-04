@@ -24,4 +24,5 @@ dist-ssr
 *.sw?
 
 .venv/
+playground/letterboxdpy-service/.venv/
 __pycache__/

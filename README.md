@@ -2,6 +2,8 @@
 
 Show a Letterboxd user's four favorite films in a React or Next.js app. Letterboxd has no public API, so favorites are scraped from the public profile page on every load.
 
+![Playground Demo](public/playground.png)
+
 - Fetches fresh on every page load (nothing is cached).
 - Works in client-only React (through a CORS proxy you provide) and in Next.js Server Components.
 - 1–3 favorites can be aligned `left`, `center` or `right`.
@@ -160,6 +162,19 @@ All exported from both entry points. The component shows a message for each; `ge
 | `UserNotFoundError` | 404 / Letterboxd's "can't find the page" |
 | `LetterboxdBlockedError` | Cloudflare challenge or 403 / 503 |
 | `LetterboxdFetchError` | Any other failure (`.status` when there is one) |
+
+## Fetching with letterboxdpy (experimental)
+
+Letterboxd's Cloudflare protection blocks plain `fetch`/`curl` requests with a 403. [letterboxdpy](https://github.com/nmcassa/letterboxdpy) gets through because it fetches with `curl_cffi`, which uses Chrome-like TLS. [`playground/letterboxdpy-service`](playground/letterboxdpy-service) is a ~50-line Python server that returns a profile's HTML using it, so it can be used as the `corsProxy`:
+
+```tsx
+<LetterboxdFavorites
+  username="nmcassa"
+  corsProxy={(url) => `http://localhost:8787${new URL(url).pathname}`}
+/>
+```
+
+This needs Python 3.10+ running next to your site, and it can stop working whenever Letterboxd or Cloudflare changes their checks. Treat it as an example, not a guarantee.
 
 ## How it works
 

@@ -26,7 +26,7 @@ import 'react-letterboxd-favorites/styles.css'
 export function Favorites() {
   return (
     <LetterboxdFavorites
-      username="nmcassa"
+      username="rayyanaamir"
       align="center"
       corsProxy={(url) => `/api/letterboxd${new URL(url).pathname}`}
     />
@@ -51,8 +51,8 @@ import 'react-letterboxd-favorites/styles.css'
 export const dynamic = 'force-dynamic'
 
 export default async function Page() {
-  const films = await getFavorites('nmcassa')
-  return <LetterboxdFavorites username="nmcassa" films={films} />
+  const films = await getFavorites('rayyanaamir')
+  return <LetterboxdFavorites username="rayyanaamir" films={films} />
 }
 ```
 
@@ -94,7 +94,7 @@ export async function GET(
 }
 ```
 
-Then `corsProxy={(url) => `/api/letterboxd${new URL(url).pathname}`}` works (the path `/api/letterboxd/nmcassa/` matches the route).
+Then `corsProxy={(url) => `/api/letterboxd${new URL(url).pathname}`}` works (the path `/api/letterboxd/rayyanaamir/` matches the route).
 
 ### Cloudflare Worker
 

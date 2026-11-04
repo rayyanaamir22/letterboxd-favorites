@@ -11,8 +11,8 @@ const DEMO_PROXY = (url: string) => {
 const ALIGNS: FavoritesAlign[] = ['left', 'center', 'right']
 
 export default function App() {
-  const [draft, setDraft] = useState('nmcassa')
-  const [username, setUsername] = useState('nmcassa')
+  const [draft, setDraft] = useState('rayyanaamir')
+  const [username, setUsername] = useState('rayyanaamir')
   const [align, setAlign] = useState<FavoritesAlign>('left')
 
   const profileHref = useMemo(() => {
@@ -58,7 +58,7 @@ export default function App() {
             autoCapitalize="off"
             autoCorrect="off"
             spellCheck={false}
-            placeholder="nmcassa"
+            placeholder="rayyanaamir"
           />
         </label>
         <button type="submit">Load</button>

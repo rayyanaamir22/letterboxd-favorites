@@ -15,6 +15,7 @@ export default defineConfig({
       exclude: [
         'src/App.tsx',
         'src/main.tsx',
+        'src/bin.ts',
         'src/__tests__',
         'src/__fixtures__',
       ],
@@ -52,6 +53,8 @@ export default defineConfig({
       entry: {
         index: resolve(import.meta.dirname, 'src/index.ts'),
         server: resolve(import.meta.dirname, 'src/server.ts'),
+        // Bootstrap for the `sync` CLI; the testable core is src/cli.ts.
+        cli: resolve(import.meta.dirname, 'src/bin.ts'),
       },
       formats: ['es', 'cjs'],
       fileName: (format, name) => `${name}.${format === 'es' ? 'js' : 'cjs'}`,
@@ -64,10 +67,17 @@ export default defineConfig({
         'cheerio',
         'clsx',
         'tailwind-merge',
+        /^node:/,
       ],
       output: {
-        // Rollup strips module-level directives, so add it back to the client entry only.
-        banner: (chunk) => (chunk.name === 'index' ? '"use client";' : ''),
+        // Rollup strips module-level directives, so add them back: "use client" on the
+        // client entry only, and a shebang on the CLI only.
+        banner: (chunk) =>
+          chunk.name === 'index'
+            ? '"use client";'
+            : chunk.name === 'cli'
+              ? '#!/usr/bin/env node'
+              : '',
       },
     },
   },

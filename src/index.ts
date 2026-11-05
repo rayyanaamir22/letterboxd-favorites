@@ -4,6 +4,8 @@ export * from './errors'
 export type {
   Film,
   FavoritesAlign,
+  FavoritesSource,
+  FavoritesCache,
   CorsProxy,
   FavoritesClassNames,
   LetterboxdFavoritesProps,

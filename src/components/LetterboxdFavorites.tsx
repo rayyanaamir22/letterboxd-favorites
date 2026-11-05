@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  CacheNotFoundError,
   InvalidUsernameError,
   LetterboxdBlockedError,
   MissingCorsProxyError,
@@ -7,7 +8,7 @@ import {
 } from '../errors'
 import type { Film, LetterboxdFavoritesProps } from '../types'
 import { cn } from '../utils/cn'
-import { fetchFavoritesClient } from '../utils/client'
+import { fetchCachedFavorites, fetchFavoritesClient } from '../utils/client'
 import { FilmCard } from './FilmCard'
 
 type Result =
@@ -15,6 +16,9 @@ type Result =
   | { username: string; films: null; error: Error }
 
 function defaultErrorMessage(error: Error, username: string): string {
+  if (error instanceof CacheNotFoundError) {
+    return `No saved favorites for “${username}”. Run: npx react-letterboxd-favorites sync ${username}`
+  }
   if (error instanceof UserNotFoundError) {
     return `Letterboxd user “${username}” not found.`
   }
@@ -39,6 +43,8 @@ function devWarn(message: string): void {
 export function LetterboxdFavorites({
   username,
   align = 'left',
+  source = 'cache',
+  cacheUrl,
   films: seed,
   live = seed === undefined,
   corsProxy,
@@ -65,10 +71,17 @@ export function LetterboxdFavorites({
     }
 
     const controller = new AbortController()
-    fetchFavoritesClient(username, {
-      corsProxy: proxyRef.current,
-      signal: controller.signal,
-    })
+    const request =
+      source === 'scrape'
+        ? fetchFavoritesClient(username, {
+            corsProxy: proxyRef.current,
+            signal: controller.signal,
+          })
+        : fetchCachedFavorites(username, {
+            cacheUrl,
+            signal: controller.signal,
+          })
+    request
       .then((films) => {
         if (!controller.signal.aborted) {
           setResult({ username, films, error: null })
@@ -83,7 +96,7 @@ export function LetterboxdFavorites({
     return () => controller.abort()
     // `seed` only matters for the dev warning above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [username, live, proxyKey])
+  }, [username, live, source, cacheUrl, proxyKey])
 
   const current = result?.username === username ? result : null
 

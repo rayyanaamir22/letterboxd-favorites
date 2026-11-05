@@ -19,9 +19,15 @@
   "files": [
     "dist"
   ],
+  "bin": {
+    "react-letterboxd-favorites": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && cp src/styles.css dist/styles.css",
+    "build": "tsc -b && vite build && cp src/styles.css dist/styles.css && chmod +x dist/cli.js",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",

@@ -1,5 +1,11 @@
 export type FavoritesAlign = 'left' | 'center' | 'right'
 
+/**
+ * - `cache` (default): read the JSON file written by `sync`.
+ * - `scrape` (experimental): fetch the Letterboxd profile live.
+ */
+export type FavoritesSource = 'cache' | 'scrape'
+
 export interface Film {
   /** Letterboxd film id; falls back to the slug. */
   id: string
@@ -10,6 +16,17 @@ export interface Film {
   /** https://letterboxd.com/film/{slug}/ */
   url: string
   posterUrl: string | null
+}
+
+/** The file written by `react-letterboxd-favorites sync`. */
+export interface FavoritesCache {
+  version: 1
+  /** Normalized username. Must match the component's `username`. */
+  username: string
+  /** ISO 8601 time of the sync. */
+  fetchedAt: string
+  /** At most 4, in profile order. */
+  films: Film[]
 }
 
 /**
@@ -47,11 +64,18 @@ export interface LetterboxdFavoritesProps {
   username: string
   /** How to pack 1–3 posters in the parent. Four posters always fill the row. */
   align?: FavoritesAlign
-  /** Server-fetched seed for SSR / RSC. */
+  /** Where `live` fetching reads from. Defaults to `'cache'`. */
+  source?: FavoritesSource
+  /**
+   * URL of the synced JSON (`source: 'cache'` only).
+   * Defaults to `/letterboxd-favorites/{username}.json`.
+   */
+  cacheUrl?: string
+  /** Seed for SSR / RSC: an imported cache's `.films`, or `getFavorites()` output. */
   films?: Film[]
-  /** Refetch after mount. Defaults to `films === undefined`. */
+  /** Fetch from `source` after mount. Defaults to `films === undefined`. */
   live?: boolean
-  /** Required for a browser fetch when `live`. */
+  /** `source: 'scrape'` only. Required for a browser fetch when `live`. */
   corsProxy?: CorsProxy
   /** Shorthand for `classNames.root`. */
   className?: string

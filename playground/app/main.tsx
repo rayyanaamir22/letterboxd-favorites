@@ -20,19 +20,19 @@ const SAMPLE = [
 }))
 
 const liveProxy = (url: string) => `/letterboxd-proxy${new URL(url).pathname}`
-// Serves the saved copy of rayyanaamir's profile, so the real fetch/parse/render path runs without Cloudflare.
-const savedProxy = () => '/real-profile.html'
 // letterboxdpy bridge: python playground/letterboxdpy-service/app.py
 const pyProxy = (url: string) => `/py-proxy${new URL(url).pathname}`
 
-type Source = 'saved' | 'python' | 'direct'
-const PROXIES = { saved: savedProxy, python: pyProxy, direct: liveProxy }
+// 'cache' is the package default: it reads /letterboxd-favorites/<username>.json (written by `sync`).
+// 'python' and 'direct' are the experimental live-scrape fallbacks.
+type Source = 'cache' | 'python' | 'direct'
+const PROXIES = { python: pyProxy, direct: liveProxy }
 
 function Page() {
   const [username, setUsername] = useState('rayyanaamir')
   const [align, setAlign] = useState<FavoritesAlign>('left')
   const [width, setWidth] = useState(600)
-  const [source, setSource] = useState<Source>('saved')
+  const [source, setSource] = useState<Source>('cache')
   const [sample, setSample] = useState(0) // 0 = live fetch, 1-4 = that many sample films
 
   return (
@@ -50,9 +50,9 @@ function Page() {
         <label style={{ marginLeft: 12 }}>
           Source{' '}
           <select value={source} onChange={(e) => setSource(e.target.value as Source)}>
-            <option value="saved">saved profile.html</option>
-            <option value="python">letterboxdpy service (:8787)</option>
-            <option value="direct">direct (Cloudflare, will 403)</option>
+            <option value="cache">cached JSON</option>
+            <option value="python">letterboxdpy service (:8787) - experimental</option>
+            <option value="direct">direct (Cloudflare, will 403) - experimental</option>
           </select>
         </label>
         <label style={{ marginLeft: 12 }}>
@@ -74,7 +74,8 @@ function Page() {
           key={`${sample}-${source}`}
           username={username}
           align={align}
-          corsProxy={PROXIES[source]}
+          source={source === 'cache' ? 'cache' : 'scrape'}
+          corsProxy={source === 'cache' ? undefined : PROXIES[source]}
           films={sample ? SAMPLE.slice(0, sample) : undefined}
         />
       </div>

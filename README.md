@@ -11,6 +11,8 @@ Show a Letterboxd user's four favorite films in a React or Next.js app.
 - Hovering (or focusing) a poster shows the title, year and a "View on Letterboxd" link.
 - Unstyled by default except for an optional stylesheet; every element takes extra classes.
 
+> Not affiliated with or endorsed by Letterboxd. Letterboxd is a trademark of Letterboxd Limited.
+
 ## Install
 
 ```bash
@@ -284,6 +286,7 @@ All exported from both entry points. The component shows a message for each; `ge
 - This is scraping. Letterboxd can change its markup at any time.
 - Letterboxd is behind Cloudflare and may block requests, especially from cloud/serverless IPs. When it does you get `LetterboxdBlockedError`; the package can't get around that. The cached flow only needs one request to get through, from your own machine.
 - No ratings: the profile's favorites section doesn't include them.
+- Scraping public profile pages may conflict with Letterboxd's terms of use. The MIT license covers this package's code only. It gives no rights to Letterboxd's data, content or trademarks.
 
 ## Development
 
@@ -294,3 +297,7 @@ npm run playground   # component test page; reads the committed cache JSON by de
 npm test
 npm run build
 ```
+
+## License
+
+[MIT](LICENSE) © 2026 Rayyan Aamir

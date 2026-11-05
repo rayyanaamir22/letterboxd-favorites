@@ -13,7 +13,7 @@ The living to-do list for `react-letterboxd-favorites`. **CLAUDE.md is the spec*
 ## Status
 
 1. [ ] Docs/spec drift in the proxy recipes and error messages
-2. [ ] Package metadata and LICENSE (needs owner input, see Later)
+2. [ ] Package metadata (`LICENSE` + `"license"` done; see the item)
 
 ---
 
@@ -30,11 +30,10 @@ Small mismatches between CLAUDE.md, README.md and the code. Make them agree, usi
 
 **Done when:** a reader can't find a statement in CLAUDE.md or README.md that the code contradicts, for these four points.
 
-### 2. Package metadata and LICENSE
+### 2. Package metadata
 
-Blocked on owner decisions (see Later). When unblocked:
+`LICENSE` (MIT) and `"license": "MIT"` are already in place. Remaining:
 
-- Add `LICENSE` (there is none) and set `"license"` in `package.json`.
 - Add `description`, `keywords`, `repository` (`github.com/rayyanaamir22/letterboxd-four-favorites`), `homepage` and `bugs` to `package.json`.
 - Check `npm pack --dry-run`: only `dist/`, README, LICENSE and package.json. No playground, fixtures or demo files.
 
@@ -44,12 +43,12 @@ Blocked on owner decisions (see Later). When unblocked:
 
 ## Later (needs the owner's decision)
 
-- **License:** which one (MIT is common for small React packages).
 - **Package name vs repo name:** the package is `react-letterboxd-favorites`, but the repo is `letterboxd-four-favorites`. Keep both, or rename one?
 - **Publishing:** `"private": true` stays until the owner decides to publish. Then also decide the first version (`0.1.0`?) and whether to add a CI workflow (lint + test + build on PRs; no network, since the tests already use fixtures).
 
 ## Done
 
+- License decided: **MIT** (© 2026 Rayyan Aamir). Added `LICENSE`, `"license": "MIT"`, a README License section, and a "not affiliated with Letterboxd" disclaimer plus a terms-of-use note under Limitations. Branch `add-mit-license`.
 - Cached favorites (one-time sync): `sync` CLI, `source="cache"` default, cache JSON format and errors, playground reads the committed `rayyanaamir.json`; live scraping is now `source="scrape"`, experimental. Branch `cached-favorites`. Verified by the owner end to end: playground cache source, `sync --from file`, and `sync --from service` / the playground's letterboxdpy source through the real bridge. Example files `rayyanaamir.json` + `rayyanaamir.html` (CSRF redacted) committed in `playground/app/public/letterboxd-favorites/`.
 - Initial refactor of the Cursor-generated first pass to match CLAUDE.md (see CLAUDE.md §2 for the table).
 - False Cloudflare "blocked" error on real profile pages fixed (5f4e556).

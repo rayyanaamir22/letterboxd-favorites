@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  // Serves src/__fixtures__/real-profile.html as /real-profile.html (the "saved" source).
-  publicDir: '../../src/__fixtures__',
+  // Serves public/letterboxd-favorites/<username>.json: the synced cache the page reads by default.
+  publicDir: 'public',
   server: {
     port: 5180,
     proxy: {

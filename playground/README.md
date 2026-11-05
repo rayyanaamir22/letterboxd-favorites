@@ -5,7 +5,8 @@ Local tools for trying the component. Nothing here ships in the npm package.
 | Folder | What it is |
 |---|---|
 | [`app/`](app/) | A small React page that renders `<LetterboxdFavorites>` from `src/` (edits hot-reload, no build needed) |
-| [`letterboxdpy-service/`](letterboxdpy-service/) | Optional Python server that fetches live profiles past Cloudflare ([instructions](letterboxdpy-service/README.md)) |
+| [`app/public/letterboxd-favorites/`](app/public/letterboxd-favorites/) | Example files for the `rayyanaamir` profile: `rayyanaamir.json` (the cache the page reads by default, written by `sync`) and `rayyanaamir.html` (a saved copy of the profile page, the input for `sync --from file`). A real app has the same pair for its own username |
+| [`letterboxdpy-service/`](letterboxdpy-service/) | Python bridge that fetches profiles past Cloudflare. Used once by `sync`, or live as an experimental proxy ([instructions](letterboxdpy-service/README.md)) |
 
 ## Run the page
 
@@ -27,8 +28,40 @@ Controls: username, `left` / `center` / `right` alignment, container width, and:
 
 | Source | Needs | Notes |
 |---|---|---|
-| `saved profile.html` (default) | Nothing | Loads `src/__fixtures__/real-profile.html`, a saved copy of the `rayyanaamir` profile. Runs the real fetch → parse → render path with no network. Changing the username has no effect |
-| `letterboxdpy service (:8787)` | The Python service running | Live data for any username |
-| `direct (Cloudflare, will 403)` | Nothing | Goes straight to letterboxd.com through the Vite dev proxy. Cloudflare usually blocks it, which shows the "blocked" error state |
+| `cached JSON` (default) | Nothing | Reads `app/public/letterboxd-favorites/<username>.json` with `source="cache"`, the package's default flow. Usernames with no synced file show the "no saved favorites" error |
+| `letterboxdpy service (:8787)` *(experimental)* | The Python service running (see below) | Live scrape for any username, on every load |
+| `direct` *(experimental, will 403)* | Nothing | Goes straight to letterboxd.com through the Vite dev proxy. Cloudflare usually blocks it, which shows the "blocked" error state |
 
-For live data, start the service in a second terminal first (see [its README](letterboxdpy-service/README.md)), then pick `letterboxdpy service` in the Source dropdown. Stop the service with Ctrl+C when you're done.
+## Try the letterboxdpy source
+
+Two terminals:
+
+```bash
+# 1. the service (first time: create the venv, see its README)
+cd playground/letterboxdpy-service
+source .venv/bin/activate
+python app.py
+
+# 2. the page, from the repository root
+npm run playground
+```
+
+Pick **letterboxdpy service** in the Source dropdown. The service terminal logs one `GET /<username>/` per load. A fake username shows "Letterboxd user “…” not found."
+
+## Refresh the example files
+
+From the repository root, after `npm run build`:
+
+```bash
+# Through the service (running, as above):
+node dist/cli.js sync rayyanaamir --out playground/app/public/letterboxd-favorites/rayyanaamir.json
+
+# Or from the saved page, no Python:
+node dist/cli.js sync rayyanaamir \
+  --from file --html playground/app/public/letterboxd-favorites/rayyanaamir.html \
+  --out playground/app/public/letterboxd-favorites/rayyanaamir.json
+```
+
+To refresh `rayyanaamir.html` itself, re-save the profile from a **private window**, so the page holds no login session, then search it for `CSRF` before committing.
+
+Stop the service with Ctrl+C when you're done.

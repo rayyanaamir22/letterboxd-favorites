@@ -1,13 +1,13 @@
 # Project Specification: `react-letterboxd-favorites`
 
 ## 1. Overview
-`react-letterboxd-favorites` is a small React package that shows a Letterboxd user's top 4 favorite films in a React or Next.js app. It has no official API. It scrapes the public profile HTML.
+`react-letterboxd-favorites` is a small React package that shows a Letterboxd user's top 4 favorite films in a React or Next.js app. Letterboxd has no official API, so the package scrapes the public profile HTML.
 
 ### Core Requirements
-- **Fresh on every load:** Favorites are fetched from Letterboxd on every page load. Nothing is cached by the package.
-- **Works on client and server:**
-  - Client-only React: the browser fetches through a consumer-supplied CORS proxy (`corsProxy` prop). The package ships **no default proxy**.
-  - Next.js Server Components: `getFavorites()` from the `/server` entry fetches on the server with no CORS issues, and the result is passed to the component.
+- **Cached by default (one-time sync):** A local CLI (`react-letterboxd-favorites sync <username>`) fetches the profile once, in development, and writes the films to a static JSON file in the consumer's `public/` folder (`public/letterboxd-favorites/{username}.json`). The component reads that file on every page load. It's same-origin, so there's no CORS, no proxy and no Cloudflare at runtime. The data only changes when the developer runs the sync again. **Why:** Cloudflare blocks direct scraping (403), and the letterboxdpy bridge needs a Python server running next to the site. Favorites rarely change, so one manual request is a good trade-off. See PLAN.md.
+- **Experimental fallbacks (live scraping):** These still work, but are documented second and labeled experimental.
+  - Client-only React: `source="scrape"`, and the browser fetches through a consumer-supplied CORS proxy (`corsProxy` prop). The package ships **no default proxy**. The letterboxdpy bridge (`playground/letterboxdpy-service`) can be that proxy.
+  - Next.js Server Components: `getFavorites()` from the `/server` entry fetches on the server with no CORS issues, and the result is passed to the component as `films`.
 - **Alignment:** With 1–3 favorites, the row aligns `left` (default), `center`, or `right` in its parent. With 4, the row is filled.
 - **No favorites:** Show text saying the profile has no favorites published.
 - **Order preserved:** Films render in the same left-to-right order as on the Letterboxd profile, up to 4.
@@ -17,12 +17,16 @@
 ### Non-goals
 - No ratings, reviews, diary data, or any data beyond the profile page.
 - No bundled or default CORS proxy and no server proxy. The README documents how to build one.
-- No caching or memoization layer.
+- No runtime caching in the component (no localStorage, no in-memory memo). The only "cache" is the JSON file the developer commits.
+- No automatic or scheduled re-sync (no cron, no CI job). Re-running `sync` is manual.
 
 ---
 
-## 2. Current State → Target
-The repo already has a working first pass (Cursor-generated). **Refactor it to match this spec. Don't rewrite from scratch.** Keep the parser selectors, the fetcher's header and URL logic, and the demo app. Change these:
+## 2. Current Work
+**See [PLAN.md](PLAN.md)** for the work queue. This spec describes the current state of the package.
+
+### Original refactor (done)
+The first pass (Cursor-generated) was refactored to match this spec. This table is kept for context. Don't rewrite from scratch: keep the parser selectors, the fetcher's header and URL logic, and the demo app.
 
 | Area | Now | Target |
 |---|---|---|
@@ -48,13 +52,15 @@ Vite in **library mode**, building ESM and CJS for npm. The demo app (`index.htm
 ```text
 react-letterboxd-favorites/
 ├── package.json
-├── vite.config.ts             # Library mode, 2 entries, "use client" banner on the client entry only
+├── vite.config.ts             # Library mode, 3 entries; "use client" banner on index, shebang on cli
 ├── vitest.config.ts           # Or a `test` block in vite.config.ts
 ├── tsconfig*.json             # strict: true
 ├── README.md
 ├── src/
 │   ├── index.ts               # CLIENT entry: components, types, errors. No cheerio
 │   ├── server.ts              # SERVER entry: getFavorites (cheerio), types, errors
+│   ├── cli.ts                 # CLI core: `run(argv, deps)` for `sync` → public/letterboxd-favorites/{username}.json. Node built-ins + cheerio. Unit-tested
+│   ├── bin.ts                 # CLI bootstrap (build entry `cli`): calls run(), sets the exit code. Nothing else
 │   ├── styles.css             # Optional default styles (moved from components/LetterboxdFavorites.css)
 │   ├── types.ts
 │   ├── errors.ts              # All error classes
@@ -63,6 +69,8 @@ react-letterboxd-favorites/
 │   │   └── FilmCard.tsx
 │   ├── utils/
 │   │   ├── cn.ts              # clsx + tailwind-merge
+│   │   ├── cache.ts           # FavoritesCache format, defaultCacheUrl, createCache, parseCache. Pure TS
+│   │   ├── client.ts          # fetchFavoritesClient (scrape) + fetchCachedFavorites (cache)
 │   │   ├── fetcher.ts         # URL building, username validation, proxy, fetch, block/404 detection
 │   │   ├── parser.ts          # Shared: selectors, filmFromFields, poster URL. No DOM or cheerio imports
 │   │   ├── parseDom.ts        # DOMParser → Film[] (client)
@@ -72,7 +80,11 @@ react-letterboxd-favorites/
 └── (demo files listed above)
 ```
 
-`getFavorites.ts` is folded into `server.ts`, or kept and imported only from there. The client component has its own internal function `fetchFavoritesClient(username, opts)` = `fetchProfileHtml` + `parseDom`.
+`getFavorites.ts` is folded into `server.ts`, or kept and imported only from there. The client component has its own internal functions: `fetchFavoritesClient(username, opts)` = `fetchProfileHtml` + `parseDom` (scrape), and `fetchCachedFavorites(username, opts)` = fetch `cacheUrl` + `parseCache` (cache).
+
+`playground/` (dev only, not shipped): `app/` is a component test page. Its `public/letterboxd-favorites/` holds the owner's example files: `rayyanaamir.json` (the committed cache it reads by default) and `rayyanaamir.html` (a saved profile page, the `--from file` input; its CSRF token is redacted). Docs present these as an example of the files a consumer creates for their own username. `letterboxdpy-service/` is the Python bridge that `sync --from service` calls (needs a Python 3.10+ venv).
+
+All three data paths (cache via `sync`, live scrape through the bridge, direct scrape) have been verified by the owner against the real profile.
 
 ---
 
@@ -83,7 +95,7 @@ react-letterboxd-favorites/
 export { LetterboxdFavorites } from './components/LetterboxdFavorites'
 export { FilmCard } from './components/FilmCard'
 export * from './errors'
-export type { Film, FavoritesAlign, CorsProxy, LetterboxdFavoritesProps, FavoritesClassNames } from './types'
+export type { Film, FavoritesAlign, FavoritesSource, FavoritesCache, CorsProxy, LetterboxdFavoritesProps, FavoritesClassNames } from './types'
 ```
 
 ### Server entry: `react-letterboxd-favorites/server`
@@ -95,12 +107,43 @@ export type { Film } from './types'
 - Uses `cache: 'no-store'`, so Next.js doesn't cache the request.
 - Sends the browser-like headers already in `fetcher.ts` (`LETTERBOXD_HEADERS`).
 - Doesn't use the `corsProxy` option.
+- Experimental: Cloudflare usually blocks it (§5).
+
+### CLI: `react-letterboxd-favorites` (package.json `bin` → `dist/cli.js`)
+```
+react-letterboxd-favorites sync <username> [options]
+  --from <service|file|direct>   Default: service
+  --service-url <url>            letterboxdpy bridge. Default: http://127.0.0.1:8787
+  --html <path>                  Saved profile page (required with --from file)
+  --out <path>                   Default: public/letterboxd-favorites/<username>.json
+  --dry-run                      Print the JSON, write nothing
+  -h, --help
+```
+- `service`: `GET {service-url}/{username}/`, then classify with `classifyResponse` (§5). On connection refused, tell the user to start `playground/letterboxdpy-service`.
+- `file`: read a browser "Save Page As" HTML. Always works and needs no Python.
+- `direct`: `getFavorites()`. Experimental, usually blocked.
+- Parses with `parseFavoritesCheerio`. Writes atomically (temp file + rename), with 2-space JSON and a trailing newline. `[]` is written, with a warning.
+- Exit codes: 0 on success, 1 on a fetch/parse/write error (message to stderr), 2 on usage errors.
+- Testable core in `src/cli.ts`: `run(argv, deps?: { fetch?, cwd?, stdout?, stderr?, now? }): Promise<number>`. `src/bin.ts` only calls it.
+- Node ≥ 18. Only `node:` built-ins plus existing deps.
+
+### Cache file: `public/letterboxd-favorites/{username}.json`
+```ts
+interface FavoritesCache {
+  version: 1
+  username: string     // normalized; must match the component's username
+  fetchedAt: string    // ISO 8601
+  films: Film[]        // ≤ 4, profile order
+}
+```
+`parseCache(json, expectedUsername)` validates the version, the username match, each `Film` field's type, and ≤ 4 films. If any check fails, it throws `InvalidCacheError`.
 
 ### Styles: `react-letterboxd-favorites/styles.css`
 
 ### Types
 ```ts
 type FavoritesAlign = 'left' | 'center' | 'right'
+type FavoritesSource = 'cache' | 'scrape'
 type CorsProxy = string | ((letterboxdUrl: string) => string)
 // string: prefix + encodeURIComponent(url), e.g. "https://my-proxy.example/?url="
 // function: full control, e.g. url => `/api/letterboxd${new URL(url).pathname}`
@@ -122,9 +165,11 @@ interface FavoritesClassNames {
 interface LetterboxdFavoritesProps {
   username: string
   align?: FavoritesAlign             // default 'left'
-  films?: Film[]                     // Server-fetched seed
-  live?: boolean                     // default: films === undefined
-  corsProxy?: CorsProxy              // Required for a browser fetch when live
+  source?: FavoritesSource           // default 'cache'
+  cacheUrl?: string                  // default `/letterboxd-favorites/${normalized username}.json`; source 'cache' only
+  films?: Film[]                     // Seed (server-fetched, or an imported cache file's .films)
+  live?: boolean                     // default: films === undefined. Fetch from `source` after mount
+  corsProxy?: CorsProxy              // source 'scrape' only. Required for a browser fetch when live
   className?: string                 // Shorthand for classNames.root
   classNames?: FavoritesClassNames
   emptyMessage?: string              // default "This profile has no favorites published."
@@ -142,7 +187,12 @@ interface LetterboxdFavoritesProps {
 - Normalize: trim, strip a leading `@`, strip trailing `/`, lower-case.
 - Validate after normalizing with `/^[a-z0-9_]{1,30}$/`. If it fails, throw `InvalidUsernameError` (this also stops path injection through the proxy).
 
-### Request
+### Cache request (`source: 'cache'`, the default)
+- `fetch(cacheUrl, { cache: 'no-cache', signal })`. Same-origin, no headers, no proxy.
+- 404 → `CacheNotFoundError`. Any other non-2xx → `LetterboxdFetchError` (`.status`). Invalid JSON or a failed `parseCache` → `InvalidCacheError`.
+- The rest of §5 (URL, scrape request, response classification, parsing) applies to `source: 'scrape'`, `getFavorites` and the CLI. It doesn't apply to reading the cache.
+
+### Scrape request
 - Browser (`typeof window !== 'undefined'`): if `corsProxy` is missing, throw `MissingCorsProxyError`. Otherwise fetch `applyCorsProxy(url)` with `cache: 'no-store'` and no custom headers (browsers drop `User-Agent` anyway).
 - Server: fetch the URL directly with `LETTERBOXD_HEADERS` plus any caller `headers`.
 
@@ -155,12 +205,13 @@ interface LetterboxdFavoritesProps {
 | 2xx but no `letterboxd` in the body (proxy returned junk) | `LetterboxdFetchError` |
 | 2xx | Parse |
 
-**Known risk:** Letterboxd is behind Cloudflare. A plain `curl` from a dev machine already gets **403**, and serverless IPs (Vercel, etc.) may be blocked too. The package can't fully work around this. It must report the error clearly (above), and the README must call it out.
+**Known risk:** Letterboxd is behind Cloudflare. A plain `curl` from a dev machine already gets **403**, and serverless IPs (Vercel, etc.) may be blocked too. The package can't fully work around this. It must report the error clearly (above), and the README must call it out. This risk is why the cache is the default: only the one-time `sync` touches Letterboxd, through the letterboxdpy bridge or a saved HTML file.
 
 ### Error classes (`src/errors.ts`, all extend `Error` and set `name`)
-`InvalidUsernameError`, `MissingCorsProxyError`, `UserNotFoundError`, `LetterboxdBlockedError`, `LetterboxdFetchError`.
+`InvalidUsernameError`, `MissingCorsProxyError`, `UserNotFoundError`, `LetterboxdBlockedError`, `LetterboxdFetchError`, `CacheNotFoundError` (`.username`, `.url`), `InvalidCacheError`.
 
 Default user-facing messages (from `errorMessage`):
+- Cache not found → "No saved favorites for “{username}”. Run: npx react-letterboxd-favorites sync {username}"
 - Not found → "Letterboxd user “{username}” not found."
 - Blocked → "Letterboxd blocked the request. Try again later."
 - Missing proxy → "A corsProxy is required to load favorites in the browser."
@@ -182,12 +233,13 @@ Default user-facing messages (from `errorMessage`):
 ### State machine (`LetterboxdFavorites`)
 | `films` seed | `live` | Initial render (SSR-safe) | After mount |
 |---|---|---|---|
-| none | true (default) | Loading | Fetch → films / empty / error |
+| none | true (default) | Loading | Fetch from `source` (cache JSON by default) → films / empty / error |
 | given | false (default) | Seed (or empty if `[]`) | Nothing |
 | given | true | Seed | Fetch; on success replace with the result (including `[]` → empty). On failure keep the seed silently (`console.warn` only in dev) |
 | none | false | Empty | Nothing (dev `console.warn`: nothing to show) |
 
-- A `username` or `corsProxy` change aborts the in-flight request (`AbortController`) and refetches. Responses for an old username are discarded.
+- The table applies to both sources. `source: 'cache'` never calls `corsProxy`.
+- A `username`, `source`, `cacheUrl` or (string) `corsProxy` change aborts the in-flight request (`AbortController`) and refetches. Responses for an old username are discarded.
 - Server and client must render the same first pass (no hydration mismatch). So never read `window` during render.
 
 ### Markup
@@ -225,9 +277,9 @@ Default user-facing messages (from `errorMessage`):
 ---
 
 ## 7. Build & Packaging
-- `vite.config.ts` library mode with `entry: { index: 'src/index.ts', server: 'src/server.ts' }`, formats `es` + `cjs`. Output `dist/index.js|cjs` and `dist/server.js|cjs`.
-- Prepend `"use client";` to the **client** chunks only (`output.banner: (chunk) => chunk.name === 'index' ? '"use client";' : ''`). Rollup otherwise strips module-level directives. Shared code must not end up in a chunk that the server entry imports and that carries the banner. Check `dist/` after the build.
-- Externals: `react`, `react-dom`, `react/jsx-runtime`, `cheerio`, `clsx`, `tailwind-merge`.
+- `vite.config.ts` library mode with `entry: { index: 'src/index.ts', server: 'src/server.ts', cli: 'src/bin.ts' }`, formats `es` + `cjs`. Output `dist/index.js|cjs`, `dist/server.js|cjs`, and `dist/cli.js` (Vite also emits an unused `dist/cli.cjs`; `bin` points at the `.js`). `src/bin.ts` is excluded from the `.d.ts` output.
+- Prepend `"use client";` to the **client** chunks only, and `#!/usr/bin/env node` to the **cli** chunk only (`output.banner: (chunk) => chunk.name === 'index' ? '"use client";' : chunk.name === 'cli' ? '#!/usr/bin/env node' : ''`). Rollup otherwise strips module-level directives. Shared code must not end up in a chunk that another entry imports and that carries a banner. Check `dist/` after the build. Add `chmod +x dist/cli.js` to the build script.
+- Externals: `react`, `react-dom`, `react/jsx-runtime`, `cheerio`, `clsx`, `tailwind-merge`, and `/^node:/`.
 - `vite-plugin-dts` emits `dist/index.d.ts` and `dist/server.d.ts`. Exclude demo files and tests.
 - Copy `src/styles.css` → `dist/styles.css` in the build (a `cp` in the `build` script is fine).
 - `package.json`:
@@ -237,6 +289,8 @@ Default user-facing messages (from `errorMessage`):
     "./server":     { "types": "./dist/server.d.ts", "import": "./dist/server.js", "require": "./dist/server.cjs" },
     "./styles.css": "./dist/styles.css"
   },
+  "bin": { "react-letterboxd-favorites": "./dist/cli.js" },
+  "engines": { "node": ">=18" },
   "sideEffects": ["**/*.css"],
   "files": ["dist"],
   "peerDependencies": { "react": ">=18", "react-dom": ">=18" },
@@ -250,7 +304,7 @@ Default user-facing messages (from `errorMessage`):
 ## 8. Testing (Vitest + jsdom + @testing-library/react)
 Network access to Letterboxd is blocked by Cloudflare in dev and CI, so **all tests use fixtures and a mocked `fetch`**.
 
-Fixtures in `src/__fixtures__/` (write minimal synthetic HTML matching the markup in §5. If the user provides a real "Save Page As" profile, add it as `real-profile.html`):
+Fixtures in `src/__fixtures__/` (minimal synthetic HTML matching the markup in §5). Keep test fixtures synthetic: the owner removed `real-profile.html` from the fixtures on purpose. The only real page in the repo is the playground example (`playground/app/public/letterboxd-favorites/rayyanaamir.html`). It's not a test fixture. Any real page committed must be saved signed out, or have its CSRF token redacted.
 - `four-favorites.html`: 4 items in a known order, one using `empty-poster` (exercises `constructPosterUrl`)
 - `two-favorites.html`
 - `no-favorites.html`: profile without `#favourites`
@@ -262,28 +316,40 @@ Tests must cover:
 - Username normalization and rejection (`@Foo/` → `foo`, `../x` → `InvalidUsernameError`).
 - `applyCorsProxy` for string and function forms.
 - Response classification for each row in the §5 table.
-- Each row of the component state machine, including abort on username change and refetch `[]` → empty.
+- Each row of the component state machine, for both sources, including abort on username change and refetch `[]` → empty.
+- Cache mode: the default `cacheUrl` and a custom one. 404 → `CacheNotFoundError` message. Malformed JSON or a username mismatch → generic error. No `corsProxy` call.
+- `parseCache` accepts valid input and rejects each invalid case. `defaultCacheUrl` normalizes the username.
+- CLI via `run()` with an injected `fetch` and a tmp `cwd`:
+  - `--from file` writes the expected JSON to the default path.
+  - `--out` and `--dry-run` work.
+  - Service 404 and Cloudflare responses → exit 1.
+  - An invalid username → exit 1 before any fetch.
+  - No args → exit 2.
+  - The output round-trips through `parseCache`.
 - `align` class and `data-count`, overlay content, link `href`, and the `classNames` merge (e.g. `classNames.card="rounded-none"` overrides a default Tailwind-style class).
 
 ---
 
 ## 9. README
-Rewrite to cover:
-- Install, import the CSS, and a minimal client example (with `corsProxy`).
-- **Next.js App Router**: Server Component calling `getFavorites` from `/server` and passing `films`, with `export const dynamic = 'force-dynamic'` so every request refetches.
-- **Proxy recipes**: a Next.js Route Handler (`app/api/letterboxd/[...path]/route.ts`) and a ~15-line Cloudflare Worker. Both forward only `letterboxd.com` paths, send `LETTERBOXD_HEADERS`, and add `Access-Control-Allow-Origin`.
-- Props table, `classNames` slots, CSS variables, error types.
-- A "Limitations" section: scraping can break when Letterboxd changes its markup, Cloudflare may block requests, and there are no ratings.
+Must cover, in this order:
+- Install, import the CSS.
+- **Quick start (default, cached)**: run the bridge, `npx react-letterboxd-favorites sync <username>`, commit the JSON, then `<LetterboxdFavorites username="…" />`. Also the `--from file` route (no Python), how to update (re-run sync), and Next.js usage (import the JSON and pass `films`, or let the component read it from `public/`).
+- **Experimental: live scraping**: client `source="scrape"` with `corsProxy`, Next.js `getFavorites` with `export const dynamic = 'force-dynamic'`, and the letterboxdpy bridge as a runtime proxy.
+- **Proxy recipes** (under experimental): a Next.js Route Handler (`app/api/letterboxd/[...path]/route.ts`) and a ~15-line Cloudflare Worker. Both forward only `letterboxd.com` paths, send `LETTERBOXD_HEADERS`, and add `Access-Control-Allow-Origin`.
+- CLI reference, cache file format, props table, `classNames` slots, CSS variables, error types.
+- A "Limitations" section: cached data is only as fresh as the last sync, scraping can break when Letterboxd changes its markup, Cloudflare may block requests, and there are no ratings.
 
 ---
 
 ## 10. Definition of Done
 - `npm run lint`, `npm test`, and `npm run build` all pass with no TypeScript errors (`strict`).
-- `dist/index.js` starts with `"use client";` and contains no `cheerio` import. `dist/server.js` has no `"use client"`.
+- `dist/index.js` starts with `"use client";` and contains no `cheerio` or `node:` import. `dist/server.js` has no `"use client"`. `dist/cli.js` starts with `#!/usr/bin/env node`, has no `"use client"`, and is executable.
+- `node dist/cli.js sync rayyanaamir --from file --html <saved page>` writes a valid cache file. With the bridge running, `--from service` does too.
+- `npm run playground` shows the four films from the committed cache JSON by default, with no network or Python.
 - `npm run dev` demo: loads favorites for a real username via the dev proxy, shows the empty state for a profile without favorites and a not-found message for a fake username, and the align radio buttons visibly move 1–3 posters. Rating no longer appears anywhere.
 - `grep -ri rating src/` returns nothing (outside fixtures).
 
 ## 11. Conventions
 - TypeScript strict, function components, named exports only.
 - CSS class prefix `lbf-`, BEM-style (`lbf-card__title`).
-- No new runtime dependencies beyond `cheerio`, `clsx`, and `tailwind-merge`.
+- No new runtime dependencies beyond `cheerio`, `clsx`, and `tailwind-merge`. The CLI uses only `node:` built-ins on top of those.

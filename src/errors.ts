@@ -38,3 +38,24 @@ export class LetterboxdFetchError extends Error {
     this.status = status
   }
 }
+
+export class CacheNotFoundError extends Error {
+  readonly username: string
+  readonly url: string
+
+  constructor(username: string, url: string) {
+    super(
+      `No saved favorites for “${username}”. Run: npx react-letterboxd-favorites sync ${username}`,
+    )
+    this.name = 'CacheNotFoundError'
+    this.username = username
+    this.url = url
+  }
+}
+
+export class InvalidCacheError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'InvalidCacheError'
+  }
+}

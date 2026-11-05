@@ -36,9 +36,12 @@ export default function App() {
         <p className="demo-kicker">react-letterboxd-favorites</p>
         <h1>Four favorites</h1>
         <p className="demo-lead">
-          Live demo of the headless-friendly Letterboxd favorites component.
-          Favorites are fetched on every load from the canonical profile URL
-          (trailing slash), then parsed from{' '}
+          Demo of the Letterboxd favorites component in its experimental live
+          mode (<code>source=&quot;scrape&quot;</code>): favorites are fetched on
+          every load from the canonical profile URL (trailing slash) through
+          the dev proxy, which Cloudflare may block. The default mode reads a
+          JSON file saved by <code>react-letterboxd-favorites sync</code>; try it
+          with <code>npm run playground</code>. The page is parsed from{' '}
           <code>#favourites .react-component[data-component-class="LazyPoster"]</code>
           — the same markup used by{' '}
           <a href="https://github.com/nmcassa/letterboxdpy">letterboxdpy</a> and{' '}
@@ -94,6 +97,7 @@ export default function App() {
         <LetterboxdFavorites
           username={username}
           align={align}
+          source="scrape"
           corsProxy={DEMO_PROXY}
         />
       </section>

@@ -1,11 +1,11 @@
 # react-letterboxd-favorites
 
-Show a Letterboxd user's four favorite films in a React or Next.js app. Letterboxd has no public API, so favorites are scraped from the public profile page on every load.
+Show a Letterboxd user's four favorite films in a React or Next.js app.
 
 ![Playground Demo](public/playground.png)
 
-- Fetches fresh on every page load (nothing is cached).
-- Works in client-only React (through a CORS proxy you provide) and in Next.js Server Components.
+- **Works without a server.** Sync your favorites once, locally. The component then reads a static JSON file from your `public/` folder, so the site needs no proxy and makes no request to Letterboxd at runtime.
+- Live scraping (through a CORS proxy, or in Next.js Server Components) is still there as an **experimental** fallback.
 - 1–3 favorites can be aligned `left`, `center` or `right`.
 - Posters keep the same left-to-right order as the profile.
 - Hovering (or focusing) a poster shows the title, year and a "View on Letterboxd" link.
@@ -17,30 +17,119 @@ Show a Letterboxd user's four favorite films in a React or Next.js app. Letterbo
 npm install react-letterboxd-favorites
 ```
 
-## Client-only React
+## Three ways to get the data
 
-Browsers can't read `letterboxd.com` directly, so a `corsProxy` is **required**. There is no default proxy.
+All three have been tested against a real profile.
+
+| Approach | Talks to Letterboxd | Needs | Status |
+|---|---|---|---|
+| **Cached JSON** via `sync` (default) | Once, from your machine | The letterboxdpy bridge *or* a saved profile page, only while syncing | Recommended |
+| Live scrape through the letterboxdpy bridge | On every page load | A Python server running next to your site | Experimental |
+| Live scrape directly (`corsProxy` / `getFavorites`) | On every page load | A proxy or server IP that Cloudflare doesn't block | Experimental, usually 403 |
+
+## Quick start (cached)
+
+Letterboxd has no API and is behind Cloudflare, which blocks plain `fetch` requests with a 403. Favorites rarely change, so the package fetches them **once, on your machine**, and saves them as JSON in your app's `public/` folder. Your site only ever reads that file.
+
+**1. Sync your favorites** (in development, from your app's root):
+
+```bash
+npx react-letterboxd-favorites sync rayyanaamir
+# → public/letterboxd-favorites/rayyanaamir.json
+```
+
+By default this goes through the [letterboxdpy bridge](playground/letterboxdpy-service), a small local Python server (Python 3.10+) that gets past Cloudflare. Start it first (see its README). No Python? Use a saved page instead:
+
+1. Open `https://letterboxd.com/<username>/` in a **private/incognito window** (so the page carries no login session) and choose **Save Page As → Web Page, HTML Only**.
+2. Run:
+
+```bash
+npx react-letterboxd-favorites sync rayyanaamir --from file --html ~/Downloads/rayyanaamir.html
+```
+
+**2. Commit the JSON file** and render the component:
 
 ```tsx
 import { LetterboxdFavorites } from 'react-letterboxd-favorites'
 import 'react-letterboxd-favorites/styles.css'
 
 export function Favorites() {
-  return (
-    <LetterboxdFavorites
-      username="rayyanaamir"
-      align="center"
-      corsProxy={(url) => `/api/letterboxd${new URL(url).pathname}`}
-    />
-  )
+  return <LetterboxdFavorites username="rayyanaamir" align="center" />
 }
+```
+
+The component fetches `/letterboxd-favorites/rayyanaamir.json` (same-origin, no CORS). Use `cacheUrl` if you serve the file somewhere else.
+
+**3. To update it,** re-run `sync` after changing your favorites on Letterboxd, then commit and deploy.
+
+> **Example setup.** [`playground/app/public/letterboxd-favorites/`](playground/app/public/letterboxd-favorites/) holds the maintainer's files: `rayyanaamir.json` (the synced cache) and `rayyanaamir.html` (the saved page it can be re-synced from with `--from file`). Your app should have the same thing for **your** profile: `public/letterboxd-favorites/<your-username>.json`, plus the saved HTML only if you want to keep it. Don't copy these files; run `sync` for your own username.
+
+### Next.js
+
+Either let the component read the file from `public/` as above, or import the JSON so the favorites render on the server with no loading state:
+
+```tsx
+// app/page.tsx
+import { LetterboxdFavorites } from 'react-letterboxd-favorites'
+import 'react-letterboxd-favorites/styles.css'
+import cache from '@/public/letterboxd-favorites/rayyanaamir.json'
+
+export default function Page() {
+  return <LetterboxdFavorites username="rayyanaamir" films={cache.films} />
+}
+```
+
+### CLI
+
+```
+react-letterboxd-favorites sync <username> [options]
+
+  --from <service|file|direct>   Where to get the profile HTML (default: service)
+  --service-url <url>            letterboxdpy bridge URL (default: http://127.0.0.1:8787)
+  --html <path>                  Saved profile page (required with --from file)
+  --out <path>                   Output file (default: public/letterboxd-favorites/<username>.json)
+  --dry-run                      Print the JSON instead of writing it
+```
+
+`--from direct` requests letterboxd.com directly and is usually blocked by Cloudflare (experimental).
+
+### Cache file
+
+```json
+{
+  "version": 1,
+  "username": "rayyanaamir",
+  "fetchedAt": "2026-11-04T12:00:00.000Z",
+  "films": [
+    { "id": "38957", "title": "TRON: Legacy", "year": 2010, "slug": "tron-legacy",
+      "url": "https://letterboxd.com/film/tron-legacy/", "posterUrl": "https://a.ltrbxd.com/…" }
+  ]
+}
+```
+
+The component checks `version` and that `username` matches its own `username` prop.
+
+## Experimental: live scraping
+
+These fetch Letterboxd on every page load. They give always-current data, but Cloudflare usually blocks them (`LetterboxdBlockedError`), especially from cloud and serverless IPs. Use them only if you have a proxy that gets through.
+
+### Client-only React
+
+Browsers can't read `letterboxd.com` directly, so a `corsProxy` is **required**. There is no default proxy.
+
+```tsx
+<LetterboxdFavorites
+  username="rayyanaamir"
+  source="scrape"
+  corsProxy={(url) => `/api/letterboxd${new URL(url).pathname}`}
+/>
 ```
 
 `corsProxy` is either a string prefix (the encoded Letterboxd URL is appended, e.g. `"https://my-proxy.example/?url="`) or a function that maps the Letterboxd URL to the URL to request.
 
 Without a `corsProxy` in the browser the component shows an error and sends no request.
 
-## Next.js (App Router)
+### Next.js Server Components
 
 Fetch on the server, where CORS doesn't apply, and pass the result in as `films`. `force-dynamic` makes every request refetch.
 
@@ -58,15 +147,29 @@ export default async function Page() {
 }
 ```
 
-When `films` is given, the browser does **not** refetch by default. Pass `live` (together with a `corsProxy`) to also refresh from the browser after mount; a fetched empty list then replaces the seed, and a failed refetch silently keeps it.
+When `films` is given, the browser does **not** refetch by default. Pass `live` (with `source="scrape"` and a `corsProxy`) to also refresh from the browser after mount; a fetched empty list then replaces the seed, and a failed refetch silently keeps it.
 
 `getFavorites(username, { fetch?, headers?, signal? })` lives in `react-letterboxd-favorites/server` so `cheerio` never reaches client bundles.
 
-## CORS proxy recipes
+### letterboxdpy bridge as a proxy
+
+[letterboxdpy](https://github.com/nmcassa/letterboxdpy) gets past Cloudflare because it fetches with `curl_cffi`, which uses Chrome-like TLS. [`playground/letterboxdpy-service`](playground/letterboxdpy-service) is a ~50-line Python server that returns a profile's HTML. Besides powering `sync`, it can be a runtime `corsProxy`:
+
+```tsx
+<LetterboxdFavorites
+  username="rayyanaamir"
+  source="scrape"
+  corsProxy={(url) => `http://localhost:8787${new URL(url).pathname}`}
+/>
+```
+
+This needs Python 3.10+ running next to your site, which is why the cached flow is the default. It can stop working whenever Letterboxd or Cloudflare changes their checks.
+
+### CORS proxy recipes
 
 Both forward only profile paths on `letterboxd.com`, send browser-like headers, and add CORS headers.
 
-### Next.js Route Handler
+#### Next.js Route Handler
 
 ```ts
 // app/api/letterboxd/[username]/route.ts
@@ -98,7 +201,7 @@ export async function GET(
 
 Then `corsProxy={(url) => `/api/letterboxd${new URL(url).pathname}`}` works (the path `/api/letterboxd/rayyanaamir/` matches the route).
 
-### Cloudflare Worker
+#### Cloudflare Worker
 
 ```js
 export default {
@@ -132,9 +235,11 @@ Use it with `corsProxy="https://your-worker.example.workers.dev/?url="`.
 |------|---------|-------------|
 | `username` | — | Letterboxd username (`@` and trailing `/` are stripped; letters, digits and `_` only) |
 | `align` | `'left'` | `left`, `center` or `right` for 1–3 posters. Four posters fill the row |
-| `films` | — | Server-fetched seed for SSR / RSC |
-| `live` | `films === undefined` | Refetch after mount |
-| `corsProxy` | — | Required in the browser when `live` (see above). A function identity change does not refetch; a changed string does |
+| `source` | `'cache'` | `'cache'` reads the synced JSON; `'scrape'` fetches Letterboxd live (experimental) |
+| `cacheUrl` | `/letterboxd-favorites/{username}.json` | Where the cache JSON is served (`source="cache"` only) |
+| `films` | — | Seed for SSR / RSC: an imported cache's `.films`, or `getFavorites()` output |
+| `live` | `films === undefined` | Fetch from `source` after mount |
+| `corsProxy` | — | `source="scrape"` only; required in the browser when `live`. A function identity change does not refetch; a changed string does |
 | `className` | — | Shorthand for `classNames.root` |
 | `classNames` | — | Extra classes per element (below), merged with `tailwind-merge` |
 | `emptyMessage` | `"This profile has no favorites published."` | |
@@ -153,30 +258,21 @@ The overlay appears on hover and keyboard focus. On touch devices there's no ove
 
 ## Errors
 
-All exported from both entry points. The component shows a message for each; `getFavorites` throws them.
+All exported from both entry points. The component shows a message for each; `getFavorites` and the CLI throw / print them.
 
 | Error | When |
 |-------|------|
+| `CacheNotFoundError` | The cache JSON returned 404. Run `sync` (`.username`, `.url`) |
+| `InvalidCacheError` | The cache JSON is malformed, a different `version`, or for another username |
 | `InvalidUsernameError` | The username isn't `[a-z0-9_]{1,30}` after normalizing |
 | `MissingCorsProxyError` | Browser fetch without a `corsProxy` |
 | `UserNotFoundError` | 404 / Letterboxd's "can't find the page" |
 | `LetterboxdBlockedError` | Cloudflare challenge or 403 / 503 |
 | `LetterboxdFetchError` | Any other failure (`.status` when there is one) |
 
-## Fetching with letterboxdpy (experimental)
-
-Letterboxd's Cloudflare protection blocks plain `fetch`/`curl` requests with a 403. [letterboxdpy](https://github.com/nmcassa/letterboxdpy) gets through because it fetches with `curl_cffi`, which uses Chrome-like TLS. [`playground/letterboxdpy-service`](playground/letterboxdpy-service) is a ~50-line Python server that returns a profile's HTML using it, so it can be used as the `corsProxy`:
-
-```tsx
-<LetterboxdFavorites
-  username="nmcassa"
-  corsProxy={(url) => `http://localhost:8787${new URL(url).pathname}`}
-/>
-```
-
-This needs Python 3.10+ running next to your site, and it can stop working whenever Letterboxd or Cloudflare changes their checks. Treat it as an example, not a guarantee.
-
 ## How it works
+
+`sync`, `source="scrape"` and `getFavorites` all share the same scraper:
 
 1. Request `https://letterboxd.com/{username}/`. The trailing slash matters: the slash-less URL redirects, and Cloudflare often challenges the redirect.
 2. Parse `#favourites`, reading `ul.grid > li.griditem` (falling back to older `ul.poster-list` markup) and the `LazyPoster` element's `data-item-*` attributes. At most four films, in document order.
@@ -184,15 +280,17 @@ This needs Python 3.10+ running next to your site, and it can stop working whene
 
 ## Limitations
 
+- Cached favorites are only as fresh as your last `sync`.
 - This is scraping. Letterboxd can change its markup at any time.
-- Letterboxd is behind Cloudflare and may block requests, especially from cloud/serverless IPs. When it does you get `LetterboxdBlockedError`; the package can't get around that.
+- Letterboxd is behind Cloudflare and may block requests, especially from cloud/serverless IPs. When it does you get `LetterboxdBlockedError`; the package can't get around that. The cached flow only needs one request to get through, from your own machine.
 - No ratings: the profile's favorites section doesn't include them.
 
 ## Development
 
 ```bash
 npm install
-npm run dev     # demo; /letterboxd-proxy is a dev-only same-origin proxy
+npm run dev          # demo (live scrape through the dev-only /letterboxd-proxy)
+npm run playground   # component test page; reads the committed cache JSON by default
 npm test
 npm run build
 ```

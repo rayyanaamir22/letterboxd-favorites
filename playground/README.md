@@ -56,12 +56,19 @@ From the repository root, after `npm run build`:
 # Through the service (running, as above):
 node dist/cli.js sync rayyanaamir --out playground/app/public/letterboxd-favorites/rayyanaamir.json
 
-# Or from the saved page, no Python:
+# Or from the saved page, no Python (default posters only, with a warning; see below):
 node dist/cli.js sync rayyanaamir \
   --from file --html playground/app/public/letterboxd-favorites/rayyanaamir.html \
   --out playground/app/public/letterboxd-favorites/rayyanaamir.json
 ```
 
-To refresh `rayyanaamir.html` itself, re-save the profile from a **private window**, so the page holds no login session, then search it for `CSRF` before committing.
+Use the service route for the committed JSON: it picks up the owner's custom (Patron) posters, and the saved HTML-only page can't.
+
+To refresh `rayyanaamir.html`, fetch it through the running service, which gives an anonymous page with no login session. Then redact the CSRF token before committing:
+
+```bash
+curl -s localhost:8787/rayyanaamir/ -o playground/app/public/letterboxd-favorites/rayyanaamir.html
+sed -i '' "s/supermodelCSRF = '[0-9a-f]*'/supermodelCSRF = 'REDACTED'/" playground/app/public/letterboxd-favorites/rayyanaamir.html
+```
 
 Stop the service with Ctrl+C when you're done.

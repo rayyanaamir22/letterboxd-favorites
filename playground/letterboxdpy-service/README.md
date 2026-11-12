@@ -1,8 +1,14 @@
 # letterboxdpy bridge
 
-A tiny Python server: `GET /<username>/` returns that Letterboxd profile's HTML, fetched with
-[letterboxdpy](https://github.com/nmcassa/letterboxdpy). Plain `fetch`/`curl` get a 403 from Cloudflare; letterboxdpy
-uses `curl_cffi` (Chrome-like TLS) and gets through.
+A tiny Python server that fetches Letterboxd with [letterboxdpy](https://github.com/nmcassa/letterboxdpy). Plain
+`fetch`/`curl` get a 403 from Cloudflare; letterboxdpy uses `curl_cffi` (Chrome-like TLS) and gets through.
+
+| Route | Returns |
+|---|---|
+| `GET /<username>/` | The profile's HTML |
+| `GET /film/<slug>/poster/std/<id>/<width>/?k=<key>` | JSON `{ url, url2x }` for a custom (Patron) poster. `sync` calls this for each favorite that has one |
+
+Anything else gets a 400.
 
 It has two uses:
 

@@ -1,9 +1,23 @@
 import { load } from 'cheerio'
 import type { Film } from '../types'
-import { filmFromFields, MAX_FAVORITES, SELECTORS } from './parser'
+import {
+  customPosterPath,
+  filmFromFields,
+  isPlaceholderImg,
+  MAX_FAVORITES,
+  SELECTORS,
+} from './parser'
 
-/** cheerio path (server / Node). Must match parseDom.ts output. */
-export function parseFavoritesCheerio(html: string): Film[] {
+export interface FavoriteRef {
+  film: Film
+  /** Poster-endpoint path for the owner's custom poster, or `null`. See `customPosterPath`. */
+  customPosterPath: string | null
+  /** The `<img>` was a placeholder, so `film.posterUrl` is the constructed default. */
+  hasPlaceholderImg: boolean
+}
+
+/** Films plus the extra poster data the `sync` CLI needs. */
+export function parseFavoriteRefsCheerio(html: string): FavoriteRef[] {
   const $ = load(html)
   const section = $(SELECTORS.section)
   if (!section.length) return []
@@ -11,9 +25,9 @@ export function parseFavoritesCheerio(html: string): Film[] {
   let items = section.find(SELECTORS.gridItems)
   if (!items.length) items = section.find(SELECTORS.legacyItems)
 
-  const films: Film[] = []
+  const refs: FavoriteRef[] = []
   items.each((_, el) => {
-    if (films.length >= MAX_FAVORITES) return false
+    if (refs.length >= MAX_FAVORITES) return false
     const $item = $(el)
 
     let poster = $item.find(SELECTORS.poster[0]).first()
@@ -24,11 +38,21 @@ export function parseFavoritesCheerio(html: string): Film[] {
     if (!poster.length) return
 
     const img = $item.find('img').first()
-    const film = filmFromFields({
-      attrs: { ...(poster.get(0) as { attribs?: Record<string, string> }).attribs },
-      imgSrc: img.attr('src') ?? img.attr('data-src'),
-    })
-    if (film) films.push(film)
+    const imgSrc = img.attr('src') ?? img.attr('data-src')
+    const attrs = { ...(poster.get(0) as { attribs?: Record<string, string> }).attribs }
+    const film = filmFromFields({ attrs, imgSrc })
+    if (film) {
+      refs.push({
+        film,
+        customPosterPath: customPosterPath(attrs),
+        hasPlaceholderImg: isPlaceholderImg(imgSrc),
+      })
+    }
   })
-  return films
+  return refs
+}
+
+/** cheerio path (server / Node). Must match parseDom.ts output. */
+export function parseFavoritesCheerio(html: string): Film[] {
+  return parseFavoriteRefsCheerio(html).map((ref) => ref.film)
 }

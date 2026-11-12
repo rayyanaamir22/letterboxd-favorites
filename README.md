@@ -2,7 +2,8 @@
 
 Show a Letterboxd user's four favorite films in a React or Next.js app.
 
-![Playground Demo](public/playground.png)
+![Playground Base Demo](public/base_demo.png)
+![Playground Patron Demo](public/patron_demo.png)
 
 - **Works without a server.** Sync your favorites once, locally. The component then reads a static JSON file from your `public/` folder, so the site needs no proxy and makes no request to Letterboxd at runtime.
 - Live scraping (through a CORS proxy, or in Next.js Server Components) is still there as an **experimental** fallback.
@@ -90,10 +91,19 @@ react-letterboxd-favorites sync <username> [options]
   --service-url <url>            letterboxdpy bridge URL (default: http://127.0.0.1:8787)
   --html <path>                  Saved profile page (required with --from file)
   --out <path>                   Output file (default: public/letterboxd-favorites/<username>.json)
+  --default-posters              Keep the default posters, even where the profile uses custom ones
   --dry-run                      Print the JSON instead of writing it
 ```
 
 `--from direct` requests letterboxd.com directly and is usually blocked by Cloudflare (experimental).
+
+### Custom posters (Letterboxd Patron)
+
+If the profile owner has picked custom posters for their favorites, `sync` saves those instead of the defaults. It makes one extra request per film through the bridge (or directly with `--from direct`), and the summary marks each one `[custom poster]`. If a lookup fails, that film keeps its default poster and you get a warning. `--default-posters` turns this off.
+
+A page saved as **HTML only** contains each custom poster's ID but not its image URL, so `--from file` warns and keeps the defaults. To get custom posters without Python, open the profile, let the posters load, then in DevTools → Elements right-click `<html>` → **Copy → Copy outerHTML**, paste that into a file, and sync from it.
+
+Live scraping (`source="scrape"`) always shows the default posters.
 
 ### Cache file
 

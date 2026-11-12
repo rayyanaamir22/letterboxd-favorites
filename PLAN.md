@@ -14,6 +14,7 @@ The living to-do list for `react-letterboxd-favorites`. **CLAUDE.md is the spec*
 
 1. [ ] Docs/spec drift in the proxy recipes and error messages
 2. [ ] Package metadata (`LICENSE` + `"license"` done; see the item)
+3. [ ] Custom posters in live-scrape mode
 
 ---
 
@@ -39,6 +40,18 @@ Small mismatches between CLAUDE.md, README.md and the code. Make them agree, usi
 
 **Done when:** `npm pack --dry-run` lists only the intended files and `package.json` has the fields above.
 
+### 3. Custom posters in live-scrape mode
+
+`sync` resolves custom (Patron) posters (see Done), but `source="scrape"` still shows the defaults. To match, the scrape path would read `customPosterPath` (`src/utils/parser.ts`) in `parseDom`, and request each poster endpoint through `corsProxy` after the profile loads.
+
+Open questions:
+- The cost: up to 4 extra proxied requests per page load.
+- Every proxy recipe (Route Handler, Worker, the bridge as a proxy) would need to forward `/film/<slug>/poster/std/<id>/<width>/?k=` too.
+- The string form of `corsProxy` drops nothing, but the function form in the docs (`new URL(url).pathname`) drops the `?k=` query.
+- Whether a failure should be silent.
+
+**Done when:** the playground's letterboxdpy source shows the owner's custom posters, and the tests cover poster resolution in scrape mode.
+
 ---
 
 ## Later (needs the owner's decision)
@@ -48,6 +61,7 @@ Small mismatches between CLAUDE.md, README.md and the code. Make them agree, usi
 
 ## Done
 
+- Custom (Patron) posters in `sync`: the parser reads `preferredAlternativePosterId` from `data-resolvable-poster-path` (`customPosterPath`), and the CLI resolves each one through the bridge's new `/film/<slug>/poster/std/<id>/<width>/` route (or directly), best-effort with warnings; `--default-posters` opts out; `--from file` warns and points to the DevTools outerHTML route. Example files re-synced: `rayyanaamir.json` now has the custom posters; `rayyanaamir.html` is an anonymous fetch through the bridge (CSRF redacted). Branch `custom-posters`.
 - License decided: **MIT** (© 2026 Rayyan Aamir). Added `LICENSE`, `"license": "MIT"`, a README License section, and a "not affiliated with Letterboxd" disclaimer plus a terms-of-use note under Limitations. Branch `add-mit-license`.
 - Cached favorites (one-time sync): `sync` CLI, `source="cache"` default, cache JSON format and errors, playground reads the committed `rayyanaamir.json`; live scraping is now `source="scrape"`, experimental. Branch `cached-favorites`. Verified by the owner end to end: playground cache source, `sync --from file`, and `sync --from service` / the playground's letterboxdpy source through the real bridge. Example files `rayyanaamir.json` + `rayyanaamir.html` (CSRF redacted) committed in `playground/app/public/letterboxd-favorites/`.
 - Initial refactor of the Cursor-generated first pass to match CLAUDE.md (see CLAUDE.md §2 for the table).

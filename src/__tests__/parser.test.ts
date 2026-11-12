@@ -3,11 +3,12 @@ import fourFavorites from '../__fixtures__/four-favorites.html?raw'
 import twoFavorites from '../__fixtures__/two-favorites.html?raw'
 import noFavorites from '../__fixtures__/no-favorites.html?raw'
 import legacy from '../__fixtures__/legacy-poster-list.html?raw'
-import { parseFavoritesCheerio } from '../utils/parseCheerio'
+import customPosters from '../__fixtures__/custom-posters.html?raw'
+import { parseFavoriteRefsCheerio, parseFavoritesCheerio } from '../utils/parseCheerio'
 import { parseFavoritesDom } from '../utils/parseDom'
-import { constructPosterUrl } from '../utils/parser'
+import { constructPosterUrl, customPosterPath } from '../utils/parser'
 
-const fixtures = { fourFavorites, twoFavorites, noFavorites, legacy }
+const fixtures = { fourFavorites, twoFavorites, noFavorites, legacy, customPosters }
 
 describe('parseDom / parseCheerio parity', () => {
   for (const [name, html] of Object.entries(fixtures)) {
@@ -69,5 +70,61 @@ describe('parsing', () => {
       '<section id="favourites"><ul class="grid"><li class="griditem"></li></ul></section>'
     expect(parseFavoritesDom(html)).toEqual([])
     expect(parseFavoritesCheerio(html)).toEqual([])
+  })
+})
+
+describe('custom posters', () => {
+  const attrs = (value: unknown) => ({
+    'data-resolvable-poster-path': typeof value === 'string' ? value : JSON.stringify(value),
+  })
+  const valid = {
+    preferredAlternativePosterId: '163837',
+    posteredBaseLink: '/film/tron-legacy/',
+    cacheBustingKey: 'f96613e8',
+  }
+
+  it('builds the poster-endpoint path', () => {
+    expect(customPosterPath(attrs(valid))).toBe(
+      '/film/tron-legacy/poster/std/163837/230/?k=f96613e8',
+    )
+    expect(customPosterPath(attrs({ ...valid, cacheBustingKey: undefined }), 460)).toBe(
+      '/film/tron-legacy/poster/std/163837/460/',
+    )
+    expect(customPosterPath(attrs({ ...valid, preferredAlternativePosterId: 42 }))).toBe(
+      '/film/tron-legacy/poster/std/42/230/?k=f96613e8',
+    )
+  })
+
+  it.each([
+    ['no attribute', {}],
+    ['bad JSON', attrs('{nope')],
+    ['JSON null', attrs('null')],
+    ['no custom poster', attrs({ ...valid, preferredAlternativePosterId: undefined })],
+    ['a non-numeric id', attrs({ ...valid, preferredAlternativePosterId: '1/../2' })],
+    ['a traversal base link', attrs({ ...valid, posteredBaseLink: '/../x/' })],
+    ['a non-film base link', attrs({ ...valid, posteredBaseLink: '/list/x/' })],
+    ['a bad cache key', attrs({ ...valid, cacheBustingKey: 'k&x=1' })],
+  ])('returns null for %s', (_name, input) => {
+    expect(customPosterPath(input as Record<string, string>)).toBeNull()
+  })
+
+  it('reports the custom-poster path and placeholder state per film', () => {
+    expect(
+      parseFavoriteRefsCheerio(customPosters).map((r) => [
+        r.film.slug,
+        r.customPosterPath,
+        r.hasPlaceholderImg,
+      ]),
+    ).toEqual([
+      ['heat', '/film/heat/poster/std/777/230/?k=abc123', true],
+      ['spirited-away', null, true],
+      ['parasite-2019', '/film/parasite-2019/poster/std/888/230/?k=0f0f', false],
+    ])
+  })
+
+  it('keeps an already-resolved custom <img> as the poster', () => {
+    expect(parseFavoritesCheerio(customPosters)[2]?.posterUrl).toBe(
+      'https://a.ltrbxd.com/resized/alternative-poster/5/1/4/0/0/p/dom-copy-0-230-0-345-crop.jpg?v=1',
+    )
   })
 })

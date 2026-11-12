@@ -2,12 +2,15 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { createCache, DEFAULT_CACHE_DIR } from './utils/cache'
+import type { Film } from './types'
 import {
   classifyResponse,
   fetchProfileHtml,
+  LETTERBOXD_HEADERS,
+  LETTERBOXD_ORIGIN,
   normalizeUsername,
 } from './utils/fetcher'
-import { parseFavoritesCheerio } from './utils/parseCheerio'
+import { type FavoriteRef, parseFavoriteRefsCheerio } from './utils/parseCheerio'
 
 export interface CliDeps {
   /** Defaults to the global `fetch`. */
@@ -34,6 +37,8 @@ Options:
   --service-url <url>           letterboxdpy bridge URL (default: ${DEFAULT_SERVICE_URL})
   --html <path>                 Saved profile page (required with --from file)
   --out <path>                  Output file (default: public/${DEFAULT_CACHE_DIR}/<username>.json)
+  --default-posters             Keep Letterboxd's default posters, even where the
+                                profile owner picked custom (Patron) ones
   --dry-run                     Print the JSON instead of writing it
   -h, --help                    Show this help
 
@@ -41,6 +46,10 @@ Sources:
   service  The letterboxdpy bridge (playground/letterboxdpy-service). Start it first.
   file     A profile saved from your browser (Save Page As -> HTML only). No Python needed.
   direct   Request letterboxd.com directly. Experimental: Cloudflare usually blocks it.
+
+Custom posters: with service (or direct), favorites that use a custom poster get
+that poster (one extra request each). A page saved as "HTML only" can't resolve
+them; save the rendered page instead (DevTools > Elements > <html> > Copy outerHTML).
 `
 
 class UsageError extends Error {}
@@ -82,6 +91,64 @@ async function getHtml(
   return classifyResponse(response.status, await response.text(), username)
 }
 
+const POSTER_CDN = 'https://a.ltrbxd.com/'
+
+/**
+ * Swaps in the owner's custom posters where the profile has them. Best effort:
+ * any failure keeps the default poster and prints a warning.
+ */
+async function resolveCustomPosters(
+  refs: FavoriteRef[],
+  source: Source,
+  serviceBase: string,
+  fetchFn: typeof fetch,
+  stderr: (text: string) => void,
+): Promise<Set<Film>> {
+  const custom = new Set<Film>()
+  const pending = refs.filter((ref) => ref.customPosterPath)
+
+  for (const ref of pending) {
+    // The page was saved after Letterboxd's JS ran, so <img> already holds the custom poster.
+    if (!ref.hasPlaceholderImg) custom.add(ref.film)
+  }
+  const unresolved = pending.filter((ref) => ref.hasPlaceholderImg)
+  if (!unresolved.length) return custom
+
+  if (source === 'file') {
+    stderr(
+      `Warning: ${unresolved.length} favorite${unresolved.length === 1 ? ' uses' : 's use'} a custom poster, ` +
+        'which a page saved as "HTML only" can\'t resolve. Kept the default posters. ' +
+        'Use --from service, or save the rendered page instead ' +
+        '(DevTools > Elements > <html> > Copy outerHTML).\n',
+    )
+    return custom
+  }
+
+  for (const ref of unresolved) {
+    const path = ref.customPosterPath as string
+    const url = source === 'service' ? `${serviceBase}${path}` : `${LETTERBOXD_ORIGIN}${path}`
+    try {
+      const response = await fetchFn(url, {
+        cache: 'no-store',
+        headers: source === 'direct' ? LETTERBOXD_HEADERS : undefined,
+      })
+      if (!response.ok) throw new Error(`status ${response.status}`)
+      const body = (await response.json()) as { url?: unknown }
+      if (typeof body.url !== 'string' || !body.url.startsWith(POSTER_CDN)) {
+        throw new Error('unexpected response')
+      }
+      ref.film.posterUrl = body.url
+      custom.add(ref.film)
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      stderr(
+        `Warning: couldn't load the custom poster for ${ref.film.title} (${reason}). Kept the default poster.\n`,
+      )
+    }
+  }
+  return custom
+}
+
 /** Testable CLI core. Returns the process exit code. */
 export async function run(argv: string[], deps: CliDeps = {}): Promise<number> {
   const stdout = deps.stdout ?? ((text: string) => void process.stdout.write(text))
@@ -97,6 +164,7 @@ export async function run(argv: string[], deps: CliDeps = {}): Promise<number> {
     html: string | undefined
     out: string | undefined
     'dry-run': boolean
+    'default-posters': boolean
     help: boolean
   }
 
@@ -110,6 +178,7 @@ export async function run(argv: string[], deps: CliDeps = {}): Promise<number> {
         html: { type: 'string' },
         out: { type: 'string' },
         'dry-run': { type: 'boolean', default: false },
+        'default-posters': { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h', default: false },
       },
     })
@@ -141,7 +210,17 @@ export async function run(argv: string[], deps: CliDeps = {}): Promise<number> {
   try {
     const normalized = normalizeUsername(username)
     const html = await getHtml(normalized, source, values, fetchFn, cwd)
-    const films = parseFavoritesCheerio(html)
+    const refs = parseFavoriteRefsCheerio(html)
+    const films = refs.map((ref) => ref.film)
+    const custom = values['default-posters']
+      ? new Set<Film>()
+      : await resolveCustomPosters(
+          refs,
+          source,
+          values['service-url'].replace(/\/+$/, ''),
+          fetchFn,
+          stderr,
+        )
     const json = `${JSON.stringify(createCache(normalized, films, deps.now), null, 2)}\n`
 
     if (values['dry-run']) {
@@ -158,7 +237,8 @@ export async function run(argv: string[], deps: CliDeps = {}): Promise<number> {
       await rename(temp, out)
       stdout(`Saved ${films.length} favorite${films.length === 1 ? '' : 's'} for ${normalized}:\n`)
       for (const film of films) {
-        stdout(`  ${film.title}${film.year ? ` (${film.year})` : ''}\n`)
+        const label = `${film.title}${film.year ? ` (${film.year})` : ''}`
+        stdout(`  ${label}${custom.has(film) ? '  [custom poster]' : ''}\n`)
       }
       stdout(`→ ${out}\n`)
     }

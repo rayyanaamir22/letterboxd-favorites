@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import customPosters from '../__fixtures__/custom-posters.html?raw'
 import cloudflare from '../__fixtures__/cloudflare-challenge.html?raw'
 import fourFavorites from '../__fixtures__/four-favorites.html?raw'
 import noFavorites from '../__fixtures__/no-favorites.html?raw'
@@ -182,5 +183,83 @@ describe('usage', () => {
   it('--help prints usage and exits 0', async () => {
     expect(await exec(['--help'])).toBe(0)
     expect(out.join('')).toContain('Usage: react-letterboxd-favorites sync')
+  })
+})
+
+describe('custom posters', () => {
+  const CUSTOM = 'https://a.ltrbxd.com/resized/alternative-poster/4/3/2/1/p/heat-custom.jpg'
+
+  function route(poster: () => Promise<Response>) {
+    return vi.fn<typeof fetch>((input) => {
+      const url = String(input)
+      return url.includes('/poster/std/') ? poster() : Promise.resolve(new Response(customPosters))
+    })
+  }
+  const json = (value: unknown, status = 200) =>
+    Promise.resolve(new Response(JSON.stringify(value), { status }))
+
+  async function written() {
+    const text = await readFile(join(cwd, 'public/letterboxd-favorites/foo.json'), 'utf8')
+    return parseCache(JSON.parse(text), 'foo').films
+  }
+
+  it('service: swaps in the custom poster through the bridge', async () => {
+    const fetchFn = route(() => json({ url: CUSTOM, url2x: CUSTOM }))
+    expect(await exec(['sync', 'foo'], fetchFn)).toBe(0)
+
+    const posterCalls = fetchFn.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/poster/'))
+    // Only Heat needs a request: Spirited Away has no custom poster, Parasite's <img> is already resolved.
+    expect(posterCalls).toEqual(['http://127.0.0.1:8787/film/heat/poster/std/777/230/?k=abc123'])
+    const films = await written()
+    expect(films[0]?.posterUrl).toBe(CUSTOM)
+    expect(films[1]?.posterUrl).toContain('/film-poster/')
+    expect(films[2]?.posterUrl).toContain('dom-copy')
+    expect(out.join('')).toContain('Heat (1995)  [custom poster]')
+    expect(out.join('')).not.toContain('Spirited Away (2001)  [custom poster]')
+    expect(err.join('')).toBe('')
+  })
+
+  it('direct: requests letterboxd.com', async () => {
+    const fetchFn = route(() => json({ url: CUSTOM }))
+    expect(await exec(['sync', 'foo', '--from', 'direct'], fetchFn)).toBe(0)
+    expect(fetchFn.mock.calls.map((c) => String(c[0]))).toContain(
+      'https://letterboxd.com/film/heat/poster/std/777/230/?k=abc123',
+    )
+    expect((await written())[0]?.posterUrl).toBe(CUSTOM)
+  })
+
+  it('--default-posters makes no poster requests', async () => {
+    const fetchFn = route(() => json({ url: CUSTOM }))
+    expect(await exec(['sync', 'foo', '--default-posters'], fetchFn)).toBe(0)
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    expect((await written())[0]?.posterUrl).toContain('/film-poster/')
+  })
+
+  it.each([
+    ['a failing endpoint', () => json({ error: 'x' }, 502), 'status 502'],
+    ['a URL outside the poster CDN', () => json({ url: 'https://evil.example/x.jpg' }), 'unexpected response'],
+    ['invalid JSON', () => Promise.resolve(new Response('nope')), 'Kept the default poster'],
+    ['a network error', () => Promise.reject(new TypeError('fetch failed')), 'fetch failed'],
+  ])('keeps the default poster and warns on %s', async (_name, poster, message) => {
+    expect(await exec(['sync', 'foo'], route(poster))).toBe(0)
+    expect((await written())[0]?.posterUrl).toContain('/film-poster/')
+    expect(err.join('')).toContain('custom poster for Heat')
+    expect(err.join('')).toContain(message)
+  })
+
+  it('file: warns that an HTML-only page cannot resolve custom posters', async () => {
+    await writeFile(join(cwd, 'saved.html'), customPosters)
+    expect(await exec(['sync', 'foo', '--from', 'file', '--html', 'saved.html'])).toBe(0)
+    expect(err.join('')).toContain('1 favorite uses a custom poster')
+    expect(err.join('')).toContain('Copy outerHTML')
+    const films = await written()
+    expect(films[0]?.posterUrl).toContain('/film-poster/')
+    expect(films[2]?.posterUrl).toContain('dom-copy')
+  })
+
+  it('file: no warning when every custom poster is already resolved', async () => {
+    await writeFile(join(cwd, 'saved.html'), fourFavorites)
+    expect(await exec(['sync', 'foo', '--from', 'file', '--html', 'saved.html'])).toBe(0)
+    expect(err.join('')).toBe('')
   })
 })

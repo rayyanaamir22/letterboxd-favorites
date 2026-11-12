@@ -102,9 +102,7 @@ function resolvePosterUrl(
   filmId: string,
   slug: string,
 ): string | null {
-  if (imgSrc && !imgSrc.includes('empty-poster') && !imgSrc.startsWith('data:')) {
-    return imgSrc
-  }
+  if (imgSrc && !isPlaceholderImg(imgSrc)) return imgSrc
   if (filmId && slug) return constructPosterUrl(filmId, slug)
   return null
 }
@@ -118,4 +116,40 @@ export function constructPosterUrl(
 ): string {
   const path = filmId.split('').join('/')
   return `https://a.ltrbxd.com/resized/film-poster/${path}/${filmId}-${slug}-0-${width}-0-${height}-crop.jpg`
+}
+
+/** True when the `<img>` is missing or a placeholder that Letterboxd's JS fills in later. */
+export function isPlaceholderImg(imgSrc: string | undefined): boolean {
+  return !imgSrc || imgSrc.includes('empty-poster') || imgSrc.startsWith('data:')
+}
+
+/**
+ * Path of Letterboxd's poster endpoint for the profile owner's custom (Patron)
+ * poster, e.g. `/film/tron-legacy/poster/std/163837/230/?k=f96613e8`. It returns
+ * JSON `{ url, url2x }`. Read from `data-resolvable-poster-path`; `null` when the
+ * film has no custom poster or the data looks wrong (it is validated strictly
+ * because the path is forwarded through the letterboxdpy bridge).
+ */
+export function customPosterPath(
+  attrs: Record<string, string>,
+  width = 230,
+): string | null {
+  const raw = attrs['data-resolvable-poster-path']
+  if (!raw) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null
+  const { preferredAlternativePosterId: altId, posteredBaseLink: base, cacheBustingKey: key } =
+    parsed as Record<string, unknown>
+
+  const id = typeof altId === 'number' ? String(altId) : altId
+  if (typeof id !== 'string' || !/^\d+$/.test(id)) return null
+  if (typeof base !== 'string' || !/^\/film\/[a-z0-9-]+\/$/.test(base)) return null
+  if (key !== undefined && (typeof key !== 'string' || !/^[0-9a-f]+$/.test(key))) return null
+
+  return `${base}poster/std/${id}/${width}/${key ? `?k=${key}` : ''}`
 }

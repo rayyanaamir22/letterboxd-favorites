@@ -82,7 +82,7 @@ react-letterboxd-favorites/
 
 `getFavorites.ts` is folded into `server.ts`, or kept and imported only from there. The client component has its own internal functions: `fetchFavoritesClient(username, opts)` = `fetchProfileHtml` + `parseDom` (scrape), and `fetchCachedFavorites(username, opts)` = fetch `cacheUrl` + `parseCache` (cache).
 
-`playground/` (dev only, not shipped): `app/` is a component test page. Its `public/letterboxd-favorites/` holds the owner's example files: `rayyanaamir.json` (the committed cache it reads by default) and `rayyanaamir.html` (a saved profile page, the `--from file` input; its CSRF token is redacted). Docs present these as an example of the files a consumer creates for their own username. `letterboxdpy-service/` is the Python bridge that `sync --from service` calls (needs a Python 3.10+ venv).
+`playground/` (dev only, not shipped): `app/` is a component test page. Its `public/letterboxd-favorites/` holds the owner's example files: `rayyanaamir.json` (the committed cache it reads by default, synced through the bridge so it has the owner's custom posters) and `rayyanaamir.html` (the profile page fetched anonymously through the bridge, the `--from file` input; its CSRF token is redacted. As an HTML-only page it can't resolve custom posters, so syncing from it gives the defaults with a warning). Docs present these as an example of the files a consumer creates for their own username. `letterboxdpy-service/` is the Python bridge that `sync --from service` calls (needs a Python 3.10+ venv).
 
 All three data paths (cache via `sync`, live scrape through the bridge, direct scrape) have been verified by the owner against the real profile.
 
@@ -116,13 +116,15 @@ react-letterboxd-favorites sync <username> [options]
   --service-url <url>            letterboxdpy bridge. Default: http://127.0.0.1:8787
   --html <path>                  Saved profile page (required with --from file)
   --out <path>                   Default: public/letterboxd-favorites/<username>.json
+  --default-posters              Skip custom-poster resolution
   --dry-run                      Print the JSON, write nothing
   -h, --help
 ```
 - `service`: `GET {service-url}/{username}/`, then classify with `classifyResponse` (§5). On connection refused, tell the user to start `playground/letterboxdpy-service`.
 - `file`: read a browser "Save Page As" HTML. Always works and needs no Python.
 - `direct`: `getFavorites()`. Experimental, usually blocked.
-- Parses with `parseFavoritesCheerio`. Writes atomically (temp file + rename), with 2-space JSON and a trailing newline. `[]` is written, with a warning.
+- Custom (Patron) posters: for each favorite with a `customPosterPath` and a placeholder `<img>`, requests the poster endpoint (`service`: `{service-url}{path}`; `direct`: `https://letterboxd.com{path}` with `LETTERBOXD_HEADERS`) and uses its JSON `url` if it starts with `https://a.ltrbxd.com/`. This is best-effort: any failure keeps the default poster, warns on stderr, and still exits 0. `file` mode can't resolve them, so it prints one warning pointing to `--from service` or a DevTools "Copy outerHTML" save, where `<img src>` already holds the custom URL. `--default-posters` skips all of this. The summary marks resolved films `[custom poster]`.
+- Parses with `parseFavoriteRefsCheerio` (`parseFavoritesCheerio` plus `customPosterPath` and `hasPlaceholderImg` per film). Writes atomically (temp file + rename), with 2-space JSON and a trailing newline. `[]` is written, with a warning.
 - Exit codes: 0 on success, 1 on a fetch/parse/write error (message to stderr), 2 on usage errors.
 - Testable core in `src/cli.ts`: `run(argv, deps?: { fetch?, cwd?, stdout?, stderr?, now? }): Promise<number>`. `src/bin.ts` only calls it.
 - Node ≥ 18. Only `node:` built-ins plus existing deps.
@@ -225,6 +227,7 @@ Default user-facing messages (from `errorMessage`):
 5. Poster: use `<img src>` unless it's missing, `empty-poster`, or a `data:` URI. Otherwise build it with `constructPosterUrl(id, slug)` → `https://a.ltrbxd.com/resized/film-poster/{id digits joined by /}/{id}-{slug}-0-230-0-345-crop.jpg`. If neither works → `null`, and the card shows a text fallback.
 6. Items with no slug, name, or link are skipped.
 7. `parseDom` and `parseCheerio` must return **identical** `Film[]` for the same HTML. Both call the shared `filmFromFields`.
+8. Custom (Patron) posters: `data-resolvable-poster-path` JSON carries `preferredAlternativePosterId`, `posteredBaseLink` and `cacheBustingKey`. `customPosterPath(attrs)` turns them into `{posteredBaseLink}poster/std/{id}/230/?k={key}`. That's the same request Letterboxd's own page JS makes, and it returns JSON `{ url, url2x }` with a hashed `alternative-poster` URL that can't be derived from the ID. It's validated strictly (`id` digits, `/film/<slug>/`, hex key) because the path goes through the bridge. Only the CLI uses it. `Film` and the parity in step 7 don't change, and live scrape shows the default posters (PLAN.md backlog).
 
 ---
 
@@ -309,6 +312,7 @@ Fixtures in `src/__fixtures__/` (minimal synthetic HTML matching the markup in �
 - `two-favorites.html`
 - `no-favorites.html`: profile without `#favourites`
 - `legacy-poster-list.html`: older `ul.poster-list` markup with `data-film-*` attributes
+- `custom-posters.html`: one film with a custom poster and a placeholder `<img>`, one with no custom poster, and one with a custom poster already resolved in `<img src>` (the DOM-copy case)
 - `not-found.html` and `cloudflare-challenge.html`
 
 Tests must cover:
@@ -321,6 +325,8 @@ Tests must cover:
 - `parseCache` accepts valid input and rejects each invalid case. `defaultCacheUrl` normalizes the username.
 - CLI via `run()` with an injected `fetch` and a tmp `cwd`:
   - `--from file` writes the expected JSON to the default path.
+  - Custom posters: service and direct swap in the endpoint's URL, and `--default-posters` makes no poster requests. A failing endpoint, a non-CDN URL, bad JSON or a network error each keep the default and warn (exit 0). `file` mode warns for an unresolved custom poster but not for an already-resolved one.
+  - `customPosterPath` accepts valid data and rejects bad JSON, a missing ID, a non-numeric ID, traversal or non-film base links, and a bad key.
   - `--out` and `--dry-run` work.
   - Service 404 and Cloudflare responses → exit 1.
   - An invalid username → exit 1 before any fetch.
@@ -332,11 +338,14 @@ Tests must cover:
 
 ## 9. README
 Must cover, in this order:
+- Header: `public/patron_demo.png` (custom posters) as the project thumbnail, the feature bullets, the non-affiliation disclaimer, and a contents list.
 - Install, import the CSS.
 - **Quick start (default, cached)**: run the bridge, `npx react-letterboxd-favorites sync <username>`, commit the JSON, then `<LetterboxdFavorites username="…" />`. Also the `--from file` route (no Python), how to update (re-run sync), and Next.js usage (import the JSON and pass `films`, or let the component read it from `public/`).
+- **Custom posters (Letterboxd Patron)**: on by default in `sync`, `--default-posters` to opt out, shown with `public/base_demo.png` (standard posters). The choice is made at sync time. HTML-only saved pages can't resolve custom posters (DevTools outerHTML route), and live scrape shows the standard posters.
+- Next.js (cached), CLI reference (flags plus a `--from` table), and the cache file format.
 - **Experimental: live scraping**: client `source="scrape"` with `corsProxy`, Next.js `getFavorites` with `export const dynamic = 'force-dynamic'`, and the letterboxdpy bridge as a runtime proxy.
 - **Proxy recipes** (under experimental): a Next.js Route Handler (`app/api/letterboxd/[...path]/route.ts`) and a ~15-line Cloudflare Worker. Both forward only `letterboxd.com` paths, send `LETTERBOXD_HEADERS`, and add `Access-Control-Allow-Origin`.
-- CLI reference, cache file format, props table, `classNames` slots, CSS variables, error types.
+- Props table, `classNames` slots, CSS variables, error types.
 - A "Limitations" section: cached data is only as fresh as the last sync, scraping can break when Letterboxd changes its markup, Cloudflare may block requests, and there are no ratings.
 
 ---

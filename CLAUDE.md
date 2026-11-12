@@ -338,11 +338,14 @@ Tests must cover:
 
 ## 9. README
 Must cover, in this order:
+- Header: `public/patron_demo.png` (custom posters) as the project thumbnail, the feature bullets, the non-affiliation disclaimer, and a contents list.
 - Install, import the CSS.
 - **Quick start (default, cached)**: run the bridge, `npx react-letterboxd-favorites sync <username>`, commit the JSON, then `<LetterboxdFavorites username="…" />`. Also the `--from file` route (no Python), how to update (re-run sync), and Next.js usage (import the JSON and pass `films`, or let the component read it from `public/`).
+- **Custom posters (Letterboxd Patron)**: on by default in `sync`, `--default-posters` to opt out, shown with `public/base_demo.png` (standard posters). The choice is made at sync time. HTML-only saved pages can't resolve custom posters (DevTools outerHTML route), and live scrape shows the standard posters.
+- Next.js (cached), CLI reference (flags plus a `--from` table), and the cache file format.
 - **Experimental: live scraping**: client `source="scrape"` with `corsProxy`, Next.js `getFavorites` with `export const dynamic = 'force-dynamic'`, and the letterboxdpy bridge as a runtime proxy.
 - **Proxy recipes** (under experimental): a Next.js Route Handler (`app/api/letterboxd/[...path]/route.ts`) and a ~15-line Cloudflare Worker. Both forward only `letterboxd.com` paths, send `LETTERBOXD_HEADERS`, and add `Access-Control-Allow-Origin`.
-- CLI reference, cache file format, props table, `classNames` slots, CSS variables, error types.
+- Props table, `classNames` slots, CSS variables, error types.
 - A "Limitations" section: cached data is only as fresh as the last sync, scraping can break when Letterboxd changes its markup, Cloudflare may block requests, and there are no ratings.
 
 ---

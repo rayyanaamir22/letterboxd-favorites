@@ -22,14 +22,12 @@ The living to-do list for `react-letterboxd-favorites`. **CLAUDE.md is the spec*
 
 ### 1. Docs/spec drift in the proxy recipes and error messages
 
-Small mismatches between CLAUDE.md, README.md and the code. Make them agree, using the code's current behavior unless noted.
+Small mismatches between CLAUDE.md, the README and docs, and the code. Make them agree, using the code's current behavior unless noted.
 
-- **Route Handler path:** CLAUDE.md §9 says `app/api/letterboxd/[...path]/route.ts`. The README recipe uses `[username]/route.ts`. Keep `[username]`: it's simpler and already validates the username. Update §9.
-- **CORS header:** §9 says both recipes add `Access-Control-Allow-Origin`. The Route Handler recipe doesn't, and doesn't need to, because it's same-origin. Update §9 to say only the Worker (a cross-origin proxy) needs it.
-- **Headers:** §9 says the recipes send `LETTERBOXD_HEADERS`. The README hardcodes a shorter copy (no `Referer`, shorter `Accept`). Copy the exact values from `src/utils/fetcher.ts` into both recipes. Don't export `LETTERBOXD_HEADERS` just for this.
+- **Headers:** the recipes in `docs/live-scraping.md` hardcode a shorter copy of the headers (no `Referer`, shorter `Accept`). Copy the exact values from `src/utils/fetcher.ts` into both recipes. Don't export `LETTERBOXD_HEADERS` just for this. (CLAUDE.md §9 was already reworded to "browser-like headers", the `[username]` route and Worker-only CORS header.)
 - **`InvalidUsernameError` message:** the component shows `“{username}” is not a valid Letterboxd username.` (`defaultErrorMessage` in `LetterboxdFavorites.tsx`), but §5's list of default messages leaves it out. Add it to §5. Make sure a component test covers it.
 
-**Done when:** a reader can't find a statement in CLAUDE.md or README.md that the code contradicts, for these four points.
+**Done when:** a reader can't find a statement in CLAUDE.md, the README or `docs/` that the code contradicts, for these points.
 
 ### 2. Package metadata
 
@@ -61,6 +59,7 @@ Open questions:
 
 ## Done
 
+- README slimmed to title, thumbnail, summary, an approaches table and step-by-step usage for each approach. Reference material moved to `docs/` (`cli.md`, `custom-posters.md`, `component.md`, `live-scraping.md`, `how-it-works.md`, `development.md`); `base_demo.png` sits with the `--default-posters` toggle. Branch `slim-readme`.
 - Custom (Patron) posters in `sync`: the parser reads `preferredAlternativePosterId` from `data-resolvable-poster-path` (`customPosterPath`), and the CLI resolves each one through the bridge's new `/film/<slug>/poster/std/<id>/<width>/` route (or directly), best-effort with warnings; `--default-posters` opts out; `--from file` warns and points to the DevTools outerHTML route. Example files re-synced: `rayyanaamir.json` now has the custom posters; `rayyanaamir.html` is an anonymous fetch through the bridge (CSRF redacted). Branch `custom-posters`.
 - License decided: **MIT** (© 2026 Rayyan Aamir). Added `LICENSE`, `"license": "MIT"`, a README License section, and a "not affiliated with Letterboxd" disclaimer plus a terms-of-use note under Limitations. Branch `add-mit-license`.
 - Cached favorites (one-time sync): `sync` CLI, `source="cache"` default, cache JSON format and errors, playground reads the committed `rayyanaamir.json`; live scraping is now `source="scrape"`, experimental. Branch `cached-favorites`. Verified by the owner end to end: playground cache source, `sync --from file`, and `sync --from service` / the playground's letterboxdpy source through the real bridge. Example files `rayyanaamir.json` + `rayyanaamir.html` (CSRF redacted) committed in `playground/app/public/letterboxd-favorites/`.

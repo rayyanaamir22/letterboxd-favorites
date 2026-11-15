@@ -16,7 +16,7 @@
 
 ### Non-goals
 - No ratings, reviews, diary data, or any data beyond the profile page.
-- No bundled or default CORS proxy and no server proxy. The README documents how to build one.
+- No bundled or default CORS proxy and no server proxy. The docs (`docs/live-scraping.md`) show how to build one.
 - No runtime caching in the component (no localStorage, no in-memory memo). The only "cache" is the JSON file the developer commits.
 - No automatic or scheduled re-sync (no cron, no CI job). Re-running `sync` is manual.
 
@@ -55,7 +55,8 @@ react-letterboxd-favorites/
 ├── vite.config.ts             # Library mode, 3 entries; "use client" banner on index, shebang on cli
 ├── vitest.config.ts           # Or a `test` block in vite.config.ts
 ├── tsconfig*.json             # strict: true
-├── README.md
+├── README.md                  # Short: summary, approaches table, usage steps (see §9)
+├── docs/                      # Reference docs the README links to (see §9)
 ├── src/
 │   ├── index.ts               # CLIENT entry: components, types, errors. No cheerio
 │   ├── server.ts              # SERVER entry: getFavorites (cheerio), types, errors
@@ -207,7 +208,7 @@ interface LetterboxdFavoritesProps {
 | 2xx but no `letterboxd` in the body (proxy returned junk) | `LetterboxdFetchError` |
 | 2xx | Parse |
 
-**Known risk:** Letterboxd is behind Cloudflare. A plain `curl` from a dev machine already gets **403**, and serverless IPs (Vercel, etc.) may be blocked too. The package can't fully work around this. It must report the error clearly (above), and the README must call it out. This risk is why the cache is the default: only the one-time `sync` touches Letterboxd, through the letterboxdpy bridge or a saved HTML file.
+**Known risk:** Letterboxd is behind Cloudflare. A plain `curl` from a dev machine already gets **403**, and serverless IPs (Vercel, etc.) may be blocked too. The package can't fully work around this. It must report the error clearly (above), and the README and docs must call it out. This risk is why the cache is the default: only the one-time `sync` touches Letterboxd, through the letterboxdpy bridge or a saved HTML file.
 
 ### Error classes (`src/errors.ts`, all extend `Error` and set `name`)
 `InvalidUsernameError`, `MissingCorsProxyError`, `UserNotFoundError`, `LetterboxdBlockedError`, `LetterboxdFetchError`, `CacheNotFoundError` (`.username`, `.url`), `InvalidCacheError`.
@@ -336,17 +337,24 @@ Tests must cover:
 
 ---
 
-## 9. README
-Must cover, in this order:
-- Header: `public/patron_demo.png` (custom posters) as the project thumbnail, the feature bullets, the non-affiliation disclaimer, and a contents list.
-- Install, import the CSS.
-- **Quick start (default, cached)**: run the bridge, `npx react-letterboxd-favorites sync <username>`, commit the JSON, then `<LetterboxdFavorites username="…" />`. Also the `--from file` route (no Python), how to update (re-run sync), and Next.js usage (import the JSON and pass `films`, or let the component read it from `public/`).
-- **Custom posters (Letterboxd Patron)**: on by default in `sync`, `--default-posters` to opt out, shown with `public/base_demo.png` (standard posters). The choice is made at sync time. HTML-only saved pages can't resolve custom posters (DevTools outerHTML route), and live scrape shows the standard posters.
-- Next.js (cached), CLI reference (flags plus a `--from` table), and the cache file format.
-- **Experimental: live scraping**: client `source="scrape"` with `corsProxy`, Next.js `getFavorites` with `export const dynamic = 'force-dynamic'`, and the letterboxdpy bridge as a runtime proxy.
-- **Proxy recipes** (under experimental): a Next.js Route Handler (`app/api/letterboxd/[...path]/route.ts`) and a ~15-line Cloudflare Worker. Both forward only `letterboxd.com` paths, send `LETTERBOXD_HEADERS`, and add `Access-Control-Allow-Origin`.
-- Props table, `classNames` slots, CSS variables, error types.
-- A "Limitations" section: cached data is only as fresh as the last sync, scraping can break when Letterboxd changes its markup, Cloudflare may block requests, and there are no ratings.
+## 9. README and docs
+The **README stays short** (title, thumbnail, summary, a data-source table, and usage steps). Reference material lives in `docs/*.md`, which the README links to.
+
+`README.md`, in this order:
+- Title, `public/patron_demo.png` (custom posters) as the project thumbnail, a one-paragraph summary, feature bullets and the non-affiliation disclaimer.
+- A short **table of the data-extraction approaches**: cached JSON (recommended), live scrape through the bridge, live scrape directly. The last two are labelled experimental.
+- **Usage**: explicit numbered steps from install to a rendered component, for each approach. Approach 1 (cached) shows the React and Next.js component code and the sync commands (bridge route and saved-page route). It mentions the `--default-posters` toggle with `public/base_demo.png` (standard posters) and links to the docs for the rest. Approaches 2 and 3 show their component code too.
+- Links to the docs, a brief Limitations list (sync freshness, scraping can break, Cloudflare, no ratings, terms-of-use note) and the license.
+
+`docs/`:
+- `cli.md`: all `sync` flags, the `--from` table, examples, exit codes and the cache file format.
+- `custom-posters.md`: Patron posters, `--default-posters`, and the DevTools "Copy outerHTML" route for saved pages.
+- `component.md`: props table, `classNames` slots, CSS variables and error types.
+- `live-scraping.md`: client `source="scrape"` with `corsProxy`, Next.js `getFavorites` with `export const dynamic = 'force-dynamic'`, the bridge as a runtime proxy, and the proxy recipes (a Next.js Route Handler and a ~15-line Cloudflare Worker; both forward only `letterboxd.com` profile paths and send browser-like headers, and the Worker adds `Access-Control-Allow-Origin`).
+- `how-it-works.md`: the scraping steps and their limits.
+- `development.md`: dev commands.
+
+Every doc starts with a "Back to the README" link. Keep README links to docs working (relative paths, valid anchors).
 
 ---
 

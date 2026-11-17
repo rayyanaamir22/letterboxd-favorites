@@ -20,6 +20,20 @@ export const SELECTORS = {
   ],
 } as const
 
+/** The profile owner's chosen display name ("RR"), not the username. Tried in order. */
+export const DISPLAY_NAME_SELECTORS = [
+  '.person-display-name .displayname .label',
+  '.person-display-name .displayname',
+] as const
+
+const MAX_DISPLAY_NAME = 60
+
+/** Trims, collapses whitespace, and drops empty or absurdly long names. */
+export function cleanDisplayName(raw: string | null | undefined): string | null {
+  const name = (raw ?? '').replace(/[\s\u200e\u200f\u00a0]+/g, ' ').trim()
+  return name && name.length <= MAX_DISPLAY_NAME ? name : null
+}
+
 export interface PosterFields {
   attrs: Record<string, string>
   imgSrc?: string

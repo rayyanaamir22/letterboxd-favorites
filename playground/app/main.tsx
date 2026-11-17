@@ -10,10 +10,12 @@ const SAMPLE = [
   ['mad-max-fury-road', 'Mad Max: Fury Road', 2015, '12345'],
   ['spirited-away', 'Spirited Away', 2001, '9876'],
   ['heat', 'Heat', 1995, '4321'],
-].map(([slug, title, year, id]) => ({
+].map(([slug, title, year, id], i) => ({
   id: String(id),
   title: String(title),
   year: Number(year),
+  rating: [5, 4.5, 3.5, 5][i],
+  liked: i % 2 === 0,
   slug: String(slug),
   url: `https://letterboxd.com/film/${slug}/`,
   posterUrl: null,
@@ -34,6 +36,7 @@ function Page() {
   const [width, setWidth] = useState(600)
   const [source, setSource] = useState<Source>('cache')
   const [sample, setSample] = useState(0) // 0 = live fetch, 1-4 = that many sample films
+  const [showRating, setShowRating] = useState(true) // needs a cache file synced with ratings
 
   return (
     <main style={{ fontFamily: 'system-ui', padding: 24, background: '#14181c', color: '#e6eef5', minHeight: '100vh' }}>
@@ -65,6 +68,9 @@ function Page() {
           </select>
         </label>
         <label style={{ marginLeft: 12 }}>
+          <input type="checkbox" checked={showRating} onChange={(e) => setShowRating(e.target.checked)} /> Show rating
+        </label>
+        <label style={{ marginLeft: 12 }}>
           Width {width}px{' '}
           <input type="range" min={240} max={900} value={width} onChange={(e) => setWidth(Number(e.target.value))} />
         </label>
@@ -74,6 +80,7 @@ function Page() {
           key={`${sample}-${source}`}
           username={username}
           align={align}
+          showRating={showRating}
           source={source === 'cache' ? 'cache' : 'scrape'}
           corsProxy={source === 'cache' ? undefined : PROXIES[source]}
           films={sample ? SAMPLE.slice(0, sample) : undefined}

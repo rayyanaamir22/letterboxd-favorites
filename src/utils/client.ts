@@ -6,14 +6,22 @@ import {
 import type { FetchFavoritesOptions, Film } from '../types'
 import { defaultCacheUrl, parseCache } from './cache'
 import { fetchProfileHtml, normalizeUsername } from './fetcher'
-import { parseFavoritesDom } from './parseDom'
+import { parseDisplayNameDom, parseFavoritesDom } from './parseDom'
+
+export interface FavoritesResult {
+  films: Film[]
+  /** The owner's chosen display name, if known. */
+  displayName?: string
+}
 
 /** Live scrape (experimental): profile HTML through a `corsProxy`, parsed with `DOMParser`. */
 export async function fetchFavoritesClient(
   username: string,
   options: FetchFavoritesOptions = {},
-): Promise<Film[]> {
-  return parseFavoritesDom(await fetchProfileHtml(username, options))
+): Promise<FavoritesResult> {
+  const html = await fetchProfileHtml(username, options)
+  const displayName = parseDisplayNameDom(html)
+  return { films: parseFavoritesDom(html), ...(displayName ? { displayName } : {}) }
 }
 
 export interface FetchCachedOptions {
@@ -28,7 +36,7 @@ export interface FetchCachedOptions {
 export async function fetchCachedFavorites(
   username: string,
   options: FetchCachedOptions = {},
-): Promise<Film[]> {
+): Promise<FavoritesResult> {
   const normalized = normalizeUsername(username)
   const url = options.cacheUrl ?? defaultCacheUrl(username)
   const fetchFn = options.fetch ?? fetch
@@ -53,5 +61,9 @@ export async function fetchCachedFavorites(
     if (options.signal?.aborted) throw error
     throw new InvalidCacheError('Saved favorites file is not valid JSON.')
   }
-  return parseCache(json, normalized).films
+  const cache = parseCache(json, normalized)
+  return {
+    films: cache.films,
+    ...(cache.displayName ? { displayName: cache.displayName } : {}),
+  }
 }

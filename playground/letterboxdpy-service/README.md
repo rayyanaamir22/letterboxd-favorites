@@ -7,6 +7,7 @@ A tiny Python server that fetches Letterboxd with [letterboxdpy](https://github.
 |---|---|
 | `GET /<username>/` | The profile's HTML |
 | `GET /film/<slug>/poster/std/<id>/<width>/?k=<key>` | JSON `{ url, url2x }` for a custom (Patron) poster. `sync` calls this for each favorite that has one |
+| `GET /<username>/films/year/<year>/` (and `…/page/<n>/`) | The member's films grid for a release year, with their rating and like per film. `sync` calls this to save them |
 
 Anything else gets a 400.
 

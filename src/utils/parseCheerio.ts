@@ -1,12 +1,24 @@
 import { load } from 'cheerio'
 import type { Film } from '../types'
 import {
+  cleanDisplayName,
   customPosterPath,
+  DISPLAY_NAME_SELECTORS,
   filmFromFields,
   isPlaceholderImg,
   MAX_FAVORITES,
   SELECTORS,
 } from './parser'
+
+/** The profile owner's display name (e.g. "RR"), or `null` if the page has none. */
+export function parseDisplayNameCheerio(html: string): string | null {
+  const $ = load(html)
+  for (const selector of DISPLAY_NAME_SELECTORS) {
+    const name = cleanDisplayName($(selector).first().text())
+    if (name) return name
+  }
+  return null
+}
 
 export interface FavoriteRef {
   film: Film
@@ -50,6 +62,50 @@ export function parseFavoriteRefsCheerio(html: string): FavoriteRef[] {
     }
   })
   return refs
+}
+
+export interface OwnerViewing {
+  /** 0.5 to 5, or `null` if watched but not rated. */
+  rating: number | null
+  liked: boolean
+}
+
+export interface OwnerViewingPage {
+  /** Film id (`film:<id>` without the prefix) to the owner's rating and like. */
+  byId: Map<string, OwnerViewing>
+  hasNextPage: boolean
+}
+
+/**
+ * Reads a profile's films grid (e.g. `/<user>/films/year/2010/`): each watched
+ * film's `poster-viewingdata` holds the owner's rating (`rated-N`, N = 1..10) and
+ * like. Independent of diary entries.
+ */
+export function parseOwnerViewingData(html: string): OwnerViewingPage {
+  const $ = load(html)
+  const byId = new Map<string, OwnerViewing>()
+
+  $('p.poster-viewingdata[data-item-uid]').each((_, el) => {
+    const uid = $(el).attr('data-item-uid') ?? ''
+    const id = uid.includes(':') ? uid.split(':').pop() : uid
+    if (!id) return
+
+    let rating: number | null = null
+    let liked = false
+    $(el)
+      .find('span')
+      .each((__, span) => {
+        const classes = ($(span).attr('class') ?? '').split(/\s+/)
+        for (const cls of classes) {
+          const match = /^rated-(\d+)$/.exec(cls)
+          if (match) rating = Number(match[1]) / 2
+          if (cls.includes('liked')) liked = true
+        }
+      })
+    byId.set(id, { rating, liked })
+  })
+
+  return { byId, hasNextPage: $('.paginate-nextprev a.next, a.next').length > 0 }
 }
 
 /** cheerio path (server / Node). Must match parseDom.ts output. */

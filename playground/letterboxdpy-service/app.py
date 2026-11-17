@@ -2,10 +2,11 @@
 
     GET /<username>/                                  -> the profile HTML
     GET /film/<slug>/poster/std/<alt-id>/<width>/?k=  -> JSON {url, url2x} for a custom (Patron) poster
+    GET /<username>/films/year/<year>/[page/<n>/]     -> the owner's films grid (ratings and likes)
 
 letterboxdpy fetches with curl_cffi (Chrome-like TLS), which is what lets it get
 past Cloudflare where plain fetch/curl get a 403. `react-letterboxd-favorites sync`
-uses both routes; the React component can also use the profile route as its
+uses all three routes; the React component can also use the profile route as its
 `corsProxy` (experimental live scraping).
 
     python app.py            # listens on 127.0.0.1:8787
@@ -27,6 +28,7 @@ HOST, PORT = "127.0.0.1", 8787
 PATH = re.compile(r"^/([A-Za-z0-9_]{1,30})/?$")
 POSTER_PATH = re.compile(r"^/film/([a-z0-9-]+)/poster/std/(\d+)/(\d+)/$")
 CACHE_KEY = re.compile(r"^[0-9a-f]+$")
+YEAR_PATH = re.compile(r"^/([A-Za-z0-9_]{1,30})/films/year/(\d{4})/(?:page/(\d{1,3})/)?$")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -45,12 +47,23 @@ class Handler(BaseHTTPRequestHandler):
         poster = POSTER_PATH.match(parsed.path)
         if poster:
             return self._poster(poster, parse_qs(parsed.query).get("k", [""])[0])
+        films_year = YEAR_PATH.match(parsed.path)
+        if films_year:
+            username, year, page = films_year.groups()
+            url = f"https://letterboxd.com/{username.lower()}/films/year/{year}/"
+            if page:
+                url += f"page/{page}/"
+            return self._page(url)
         match = PATH.match(parsed.path)
         if not match:
             return self._send(400, "Bad request", "text/plain")
         username = match.group(1).lower()
+        return self._page(f"https://letterboxd.com/{username}/")
+
+    def _page(self, url: str):
+        """Fetch a Letterboxd HTML page and map letterboxdpy errors to HTTP statuses."""
         try:
-            soup = Scraper.get_page(f"https://letterboxd.com/{username}/")
+            soup = Scraper.get_page(url)
         except ResourceNotFoundError:
             # Contains the phrase the package uses to detect a missing user.
             return self._send(404, "<html>Letterboxd: Sorry, we can't find the page</html>")

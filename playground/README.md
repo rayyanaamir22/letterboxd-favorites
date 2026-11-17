@@ -21,6 +21,7 @@ Open http://localhost:5180.
 
 Controls: username, `left` / `center` / `right` alignment, container width, and:
 
+- **Show rating**: turns on `showRating` (on by default). The cached JSON has the owner's rating and like; sample films get made-up ones.
 - **Sample films**: show 1–4 fake films, to check alignment and the hover overlay with no network.
 - **Source**: where the profile HTML comes from.
 

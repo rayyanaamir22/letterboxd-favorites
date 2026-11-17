@@ -16,11 +16,13 @@ export function createCache(
   username: string,
   films: Film[],
   now: Date = new Date(),
+  displayName?: string | null,
 ): FavoritesCache {
   return {
     version: CACHE_VERSION,
     username: normalizeUsername(username),
     fetchedAt: now.toISOString(),
+    ...(displayName ? { displayName } : {}),
     films,
   }
 }
@@ -44,7 +46,27 @@ function parseFilm(value: unknown, index: number): Film {
   if (posterUrl !== null && typeof posterUrl !== 'string') {
     throw new InvalidCacheError(`films[${index}].posterUrl must be a string or null.`)
   }
-  return { id, title, year: year as number | null, slug, url, posterUrl }
+  const film: Film = { id, title, year: year as number | null, slug, url, posterUrl }
+
+  const { rating, liked } = value
+  if (rating !== undefined) {
+    const valid =
+      rating === null ||
+      (typeof rating === 'number' && rating >= 0.5 && rating <= 5 && rating * 2 === Math.round(rating * 2))
+    if (!valid) {
+      throw new InvalidCacheError(
+        `films[${index}].rating must be null or 0.5 to 5 in half steps.`,
+      )
+    }
+    film.rating = rating
+  }
+  if (liked !== undefined) {
+    if (typeof liked !== 'boolean') {
+      throw new InvalidCacheError(`films[${index}].liked must be a boolean.`)
+    }
+    film.liked = liked
+  }
+  return film
 }
 
 /**
@@ -73,10 +95,16 @@ export function parseCache(json: unknown, expectedUsername: string): FavoritesCa
   if (json.films.length > MAX_FAVORITES) {
     throw new InvalidCacheError(`Cache file has more than ${MAX_FAVORITES} films.`)
   }
+  if (json.displayName !== undefined) {
+    if (typeof json.displayName !== 'string' || !json.displayName.trim()) {
+      throw new InvalidCacheError('Cache file displayName must be a non-empty string.')
+    }
+  }
   return {
     version: CACHE_VERSION,
     username: expected,
     fetchedAt: json.fetchedAt,
+    ...(typeof json.displayName === 'string' ? { displayName: json.displayName } : {}),
     films: json.films.map(parseFilm),
   }
 }

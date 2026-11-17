@@ -9,11 +9,13 @@ import {
 import type { Film, LetterboxdFavoritesProps } from '../types'
 import { cn } from '../utils/cn'
 import { fetchCachedFavorites, fetchFavoritesClient } from '../utils/client'
+import { normalizeUsername } from '../utils/fetcher'
 import { FilmCard } from './FilmCard'
+import { LetterboxdLogo } from './LetterboxdLogo'
 
 type Result =
-  | { username: string; films: Film[]; error: null }
-  | { username: string; films: null; error: Error }
+  | { username: string; films: Film[]; displayName?: string; error: null }
+  | { username: string; films: null; displayName?: undefined; error: Error }
 
 function defaultErrorMessage(error: Error, username: string): string {
   if (error instanceof CacheNotFoundError) {
@@ -34,6 +36,16 @@ function defaultErrorMessage(error: Error, username: string): string {
   return 'Couldn’t load Letterboxd favorites.'
 }
 
+/** The name and profile link for the header. Falls back gracefully on an invalid username. */
+function headerUser(username: string): { name: string; href: string } {
+  try {
+    const name = normalizeUsername(username)
+    return { name, href: `https://letterboxd.com/${name}/` }
+  } catch {
+    return { name: username.trim(), href: 'https://letterboxd.com/' }
+  }
+}
+
 function devWarn(message: string): void {
   const env = (globalThis as { process?: { env?: { NODE_ENV?: string } } })
     .process?.env?.NODE_ENV
@@ -48,6 +60,8 @@ export function LetterboxdFavorites({
   films: seed,
   live = seed === undefined,
   corsProxy,
+  showRating = false,
+  displayName,
   className,
   classNames,
   emptyMessage = 'This profile has no favorites published.',
@@ -82,9 +96,9 @@ export function LetterboxdFavorites({
             signal: controller.signal,
           })
     request
-      .then((films) => {
+      .then(({ films, displayName: fetchedName }) => {
         if (!controller.signal.aborted) {
-          setResult({ username, films, error: null })
+          setResult({ username, films, displayName: fetchedName, error: null })
         }
       })
       .catch((reason: unknown) => {
@@ -122,6 +136,9 @@ export function LetterboxdFavorites({
   }
 
   const statusClass = cn('lbf-status', classNames?.status)
+  const user = headerUser(username)
+  // An explicit prop wins, then the name in the fetched file, then the username.
+  const name = displayName?.trim() || current?.displayName || user.name
 
   return (
     <div
@@ -129,6 +146,23 @@ export function LetterboxdFavorites({
       data-username={username}
       data-state={state}
     >
+      <header className={cn('lbf-header', classNames?.header)}>
+        <a
+          className={cn('lbf-header__link', classNames?.headerLink)}
+          href={user.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`${name} on Letterboxd`}
+        >
+          <span className="lbf-header__name">{name}</span>
+        </a>
+        <span className="lbf-header__suffix">’s</span>
+        <LetterboxdLogo className={cn('lbf-header__logo', classNames?.logo)} />{' '}
+        <span className="lbf-header__suffix">
+          <strong className="lbf-header__brand">Letterboxd</strong> favorites
+        </span>
+      </header>
+
       {state === 'loading' ? (
         <p className={statusClass} role="status">
           {loadingMessage}
@@ -157,7 +191,7 @@ export function LetterboxdFavorites({
               key={film.id || film.slug}
               className={cn('lbf-row__item', classNames?.item)}
             >
-              <FilmCard film={film} classNames={classNames} />
+              <FilmCard film={film} classNames={classNames} showRating={showRating} />
             </li>
           ))}
         </ul>

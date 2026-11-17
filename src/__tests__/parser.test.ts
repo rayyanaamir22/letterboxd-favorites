@@ -4,9 +4,16 @@ import twoFavorites from '../__fixtures__/two-favorites.html?raw'
 import noFavorites from '../__fixtures__/no-favorites.html?raw'
 import legacy from '../__fixtures__/legacy-poster-list.html?raw'
 import customPosters from '../__fixtures__/custom-posters.html?raw'
-import { parseFavoriteRefsCheerio, parseFavoritesCheerio } from '../utils/parseCheerio'
-import { parseFavoritesDom } from '../utils/parseDom'
-import { constructPosterUrl, customPosterPath } from '../utils/parser'
+import filmsYear from '../__fixtures__/films-year.html?raw'
+import {
+  parseDisplayNameCheerio,
+  parseFavoriteRefsCheerio,
+  parseFavoritesCheerio,
+  parseOwnerViewingData,
+} from '../utils/parseCheerio'
+import { formatStars } from '../utils/rating'
+import { parseDisplayNameDom, parseFavoritesDom } from '../utils/parseDom'
+import { cleanDisplayName, constructPosterUrl, customPosterPath } from '../utils/parser'
 
 const fixtures = { fourFavorites, twoFavorites, noFavorites, legacy, customPosters }
 
@@ -126,5 +133,56 @@ describe('custom posters', () => {
     expect(parseFavoritesCheerio(customPosters)[2]?.posterUrl).toBe(
       'https://a.ltrbxd.com/resized/alternative-poster/5/1/4/0/0/p/dom-copy-0-230-0-345-crop.jpg?v=1',
     )
+  })
+})
+
+describe('owner rating and like (films grid)', () => {
+  it('reads rating and like per film id, independent of diary entries', () => {
+    const { byId } = parseOwnerViewingData(filmsYear)
+    expect(Object.fromEntries(byId)).toEqual({
+      '4321': { rating: 5, liked: true },
+      '9876': { rating: 3.5, liked: false },
+      '51400': { rating: null, liked: false },
+      '12345': { rating: null, liked: true },
+    })
+  })
+
+  it('detects whether there is a next page', () => {
+    expect(parseOwnerViewingData(filmsYear).hasNextPage).toBe(true)
+    expect(parseOwnerViewingData(fourFavorites).hasNextPage).toBe(false)
+    expect(parseOwnerViewingData('<html></html>').byId.size).toBe(0)
+  })
+
+  it('formats stars', () => {
+    expect(formatStars(5)).toBe('★★★★★')
+    expect(formatStars(3.5)).toBe('★★★½')
+    expect(formatStars(0.5)).toBe('½')
+    expect(formatStars(1)).toBe('★')
+  })
+})
+
+describe('display name', () => {
+  it('reads the profile owner\'s chosen name, identically in DOM and cheerio', () => {
+    expect(parseDisplayNameDom(fourFavorites)).toBe('Fan Foo')
+    expect(parseDisplayNameCheerio(fourFavorites)).toBe('Fan Foo')
+  })
+
+  it('is null when the page has no name', () => {
+    expect(parseDisplayNameDom(twoFavorites)).toBeNull()
+    expect(parseDisplayNameCheerio(twoFavorites)).toBeNull()
+    expect(parseDisplayNameCheerio('<html></html>')).toBeNull()
+  })
+
+  it('falls back to the .displayname element without a label', () => {
+    const html = '<h1 class="person-display-name"><span class="displayname">Solo</span></h1>'
+    expect(parseDisplayNameDom(html)).toBe('Solo')
+    expect(parseDisplayNameCheerio(html)).toBe('Solo')
+  })
+
+  it('cleans whitespace and rejects empty or very long names', () => {
+    expect(cleanDisplayName('\u200e  A \u00a0 B ')).toBe('A B')
+    expect(cleanDisplayName('   ')).toBeNull()
+    expect(cleanDisplayName(null)).toBeNull()
+    expect(cleanDisplayName('x'.repeat(61))).toBeNull()
   })
 })

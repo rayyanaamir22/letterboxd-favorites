@@ -16,6 +16,13 @@ export interface Film {
   /** https://letterboxd.com/film/{slug}/ */
   url: string
   posterUrl: string | null
+  /**
+   * The profile owner's own rating, 0.5 to 5 in half steps; `null` if watched but
+   * not rated. Only present in files written by `sync` (never from live scraping).
+   */
+  rating?: number | null
+  /** Whether the profile owner liked the film. Only present in `sync` files. */
+  liked?: boolean
 }
 
 /** The file written by `react-letterboxd-favorites sync`. */
@@ -25,6 +32,8 @@ export interface FavoritesCache {
   username: string
   /** ISO 8601 time of the sync. */
   fetchedAt: string
+  /** The owner's chosen display name (e.g. "RR"). Shown in the header instead of the username. */
+  displayName?: string
   /** At most 4, in profile order. */
   films: Film[]
 }
@@ -58,6 +67,11 @@ export interface FavoritesClassNames {
   year?: string
   cta?: string
   status?: string
+  header?: string
+  headerLink?: string
+  logo?: string
+  rating?: string
+  like?: string
 }
 
 export interface LetterboxdFavoritesProps {
@@ -77,6 +91,16 @@ export interface LetterboxdFavoritesProps {
   live?: boolean
   /** `source: 'scrape'` only. Required for a browser fetch when `live`. */
   corsProxy?: CorsProxy
+  /**
+   * Show the profile owner's rating and like on hover. Needs a cache file written
+   * by `sync` (without `--skip-ratings`). Defaults to `false`.
+   */
+  showRating?: boolean
+  /**
+   * Name shown in the header instead of the username (e.g. "RR"). Defaults to the one
+   * in the cache file, then the username. Pass `cache.displayName` when you seed `films`.
+   */
+  displayName?: string
   /** Shorthand for `classNames.root`. */
   className?: string
   classNames?: FavoritesClassNames

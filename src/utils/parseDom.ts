@@ -1,5 +1,21 @@
 import type { Film } from '../types'
-import { filmFromFields, MAX_FAVORITES, SELECTORS } from './parser'
+import {
+  cleanDisplayName,
+  DISPLAY_NAME_SELECTORS,
+  filmFromFields,
+  MAX_FAVORITES,
+  SELECTORS,
+} from './parser'
+
+/** DOMParser path (client). Must match parseCheerio.ts. */
+export function parseDisplayNameDom(html: string): string | null {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  for (const selector of DISPLAY_NAME_SELECTORS) {
+    const name = cleanDisplayName(doc.querySelector(selector)?.textContent)
+    if (name) return name
+  }
+  return null
+}
 
 /** DOMParser path (client). */
 export function parseFavoritesDom(html: string): Film[] {

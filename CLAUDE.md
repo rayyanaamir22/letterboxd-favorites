@@ -11,11 +11,13 @@
 - **Alignment:** With 1–3 favorites, the row aligns `left` (default), `center`, or `right` in its parent. With 4, the row is filled.
 - **No favorites:** Show text saying the profile has no favorites published.
 - **Order preserved:** Films render in the same left-to-right order as on the Letterboxd profile, up to 4.
-- **Hover details:** Each poster shows an overlay on hover and on keyboard focus with the **title**, **release year** (if known), and a **"View on Letterboxd"** cue. The whole card links to the film page. **No ratings** (decided: the profile favorites markup has none, and fetching them would need more requests).
+- **Hover details:** Each poster shows an overlay on hover and on keyboard focus with the **title**, **release year** (if known), and a **"View on Letterboxd"** cue. The whole card links to the film page.
+- **Optional owner rating and like:** With `showRating` (default off), the overlay also shows the **profile owner's** rating (`★★★★½`) and like (`♥`). The profile's favorites markup has neither, so `sync` reads them from the owner's films list for the film's release year (`/<user>/films/year/<year>/`), which lists every watched film (not just diary entries), and saves them in the cache JSON. Live scraping never has them. This is the only rating data in scope.
+- **Letterboxd-style frame (always shown, no props to hide it):** a dark box with a single header in the top left reading "`<name>`'s `<logo>` **Letterboxd** favorites", where `<logo>` is Letterboxd's three coloured dots (no circle), "Letterboxd" is bold, **only `<name>` links to the profile** (not the "'s", the logo or the rest), and only `<name>` is truncated with `…` when too long. `<name>` is the profile owner's **chosen display name** (e.g. "RR"), read from the profile and saved by `sync`; it falls back to the username. There is no separate footer logo. Colors come from CSS variables.
 - **Styling is optional:** The component renders semantic, class-named markup. Default styles live in an opt-in `styles.css`. Each element can take extra classes through a `classNames` prop, merged with `tailwind-merge`.
 
 ### Non-goals
-- No ratings, reviews, diary data, or any data beyond the profile page.
+- No reviews, diary data, average ratings, or any data beyond the profile page, apart from the profile owner's own rating and like for each favorite (see above).
 - No bundled or default CORS proxy and no server proxy. The docs (`docs/live-scraping.md`) show how to build one.
 - No runtime caching in the component (no localStorage, no in-memory memo). The only "cache" is the JSON file the developer commits.
 - No automatic or scheduled re-sync (no cron, no CI job). Re-running `sync` is manual.
@@ -30,7 +32,7 @@ The first pass (Cursor-generated) was refactored to match this spec. This table 
 
 | Area | Now | Target |
 |---|---|---|
-| Rating | `Film.rating`, `formatRating`, overlay shows rating | Remove everywhere (type, parser, card, CSS, README) |
+| Rating | `Film.rating`, `formatRating`, overlay shows rating | Removed at first, then re-added as the optional **owner** rating and like (§1, `showRating`) |
 | Entry points | One entry that dynamically imports `cheerio` | `.` (client, `"use client"`, no cheerio) and `./server` (cheerio) |
 | CSS | `LetterboxdFavorites.tsx` imports the CSS, so it's always injected | The component does **not** import CSS. `src/styles.css` is shipped as `react-letterboxd-favorites/styles.css` |
 | `live` default | Always `true` | `true` when no `films` are passed, `false` when `films` are passed |
@@ -67,11 +69,13 @@ react-letterboxd-favorites/
 │   ├── errors.ts              # All error classes
 │   ├── components/
 │   │   ├── LetterboxdFavorites.tsx
+│   │   ├── LetterboxdLogo.tsx   # Inline SVG of Letterboxd's three dots, no circle (same art as public/letterboxd-logo.svg)
 │   │   └── FilmCard.tsx
 │   ├── utils/
 │   │   ├── cn.ts              # clsx + tailwind-merge
 │   │   ├── cache.ts           # FavoritesCache format, defaultCacheUrl, createCache, parseCache. Pure TS
 │   │   ├── client.ts          # fetchFavoritesClient (scrape) + fetchCachedFavorites (cache)
+│   │   ├── rating.ts          # formatStars(4.5) → "★★★★½"
 │   │   ├── fetcher.ts         # URL building, username validation, proxy, fetch, block/404 detection
 │   │   ├── parser.ts          # Shared: selectors, filmFromFields, poster URL. No DOM or cheerio imports
 │   │   ├── parseDom.ts        # DOMParser → Film[] (client)
@@ -118,6 +122,7 @@ react-letterboxd-favorites sync <username> [options]
   --html <path>                  Saved profile page (required with --from file)
   --out <path>                   Default: public/letterboxd-favorites/<username>.json
   --default-posters              Skip custom-poster resolution
+  --skip-ratings                 Skip the owner rating and like lookup
   --dry-run                      Print the JSON, write nothing
   -h, --help
 ```
@@ -125,6 +130,8 @@ react-letterboxd-favorites sync <username> [options]
 - `file`: read a browser "Save Page As" HTML. Always works and needs no Python.
 - `direct`: `getFavorites()`. Experimental, usually blocked.
 - Custom (Patron) posters: for each favorite with a `customPosterPath` and a placeholder `<img>`, requests the poster endpoint (`service`: `{service-url}{path}`; `direct`: `https://letterboxd.com{path}` with `LETTERBOXD_HEADERS`) and uses its JSON `url` if it starts with `https://a.ltrbxd.com/`. This is best-effort: any failure keeps the default poster, warns on stderr, and still exits 0. `file` mode can't resolve them, so it prints one warning pointing to `--from service` or a DevTools "Copy outerHTML" save, where `<img src>` already holds the custom URL. `--default-posters` skips all of this. The summary marks resolved films `[custom poster]`.
+- Owner rating and like: unless `--skip-ratings`, for each favorite with a year, requests `{base}/{username}/films/year/{year}/` (`service`: the service URL; `direct`: `https://letterboxd.com` with `LETTERBOXD_HEADERS`), following `/page/{n}/` (at most 5 pages) until the film's id is found, and sets `film.rating` (0.5 to 5, or `null` if unrated) and `film.liked`. A film that isn't on the list gets `rating: null, liked: false`. Each page is requested once even when films share a year. Best-effort: a failure leaves the fields out, warns, and still exits 0. `file` mode prints a one-line note instead, because a saved profile has none. The summary shows `★★★★★ ♥` per film.
+- Display name: `parseDisplayNameCheerio(html)` reads the owner's chosen name from the profile and saves it as `displayName` in the cache file (omitted if the page has none, which is also the case for any page without the profile header). The summary shows `foo (RR)`.
 - Parses with `parseFavoriteRefsCheerio` (`parseFavoritesCheerio` plus `customPosterPath` and `hasPlaceholderImg` per film). Writes atomically (temp file + rename), with 2-space JSON and a trailing newline. `[]` is written, with a warning.
 - Exit codes: 0 on success, 1 on a fetch/parse/write error (message to stderr), 2 on usage errors.
 - Testable core in `src/cli.ts`: `run(argv, deps?: { fetch?, cwd?, stdout?, stderr?, now? }): Promise<number>`. `src/bin.ts` only calls it.
@@ -136,10 +143,11 @@ interface FavoritesCache {
   version: 1
   username: string     // normalized; must match the component's username
   fetchedAt: string    // ISO 8601
+  displayName?: string // the owner's chosen name (e.g. "RR"); shown in the header instead of the username
   films: Film[]        // ≤ 4, profile order
 }
 ```
-`parseCache(json, expectedUsername)` validates the version, the username match, each `Film` field's type, and ≤ 4 films. If any check fails, it throws `InvalidCacheError`.
+`parseCache(json, expectedUsername)` validates the version, the username match, each `Film` field's type (`rating`, if present, must be `null` or 0.5 to 5 in half steps; `liked`, if present, a boolean), and ≤ 4 films. `displayName`, if present, must be a non-empty string. All three are optional, so older files stay valid (`version` stays 1). If any check fails, it throws `InvalidCacheError`.
 
 ### Styles: `react-letterboxd-favorites/styles.css`
 
@@ -158,11 +166,14 @@ interface Film {
   slug: string
   url: string           // https://letterboxd.com/film/{slug}/
   posterUrl: string | null
+  rating?: number | null  // owner's rating, 0.5-5 in half steps, null = unrated. Only in `sync` files
+  liked?: boolean         // owner's like. Only in `sync` files
 }
 
 interface FavoritesClassNames {
   root?: string; list?: string; item?: string; card?: string; poster?: string
   fallback?: string; overlay?: string; title?: string; year?: string; cta?: string; status?: string
+  header?: string; headerLink?: string; logo?: string; rating?: string; like?: string
 }
 
 interface LetterboxdFavoritesProps {
@@ -173,6 +184,8 @@ interface LetterboxdFavoritesProps {
   films?: Film[]                     // Seed (server-fetched, or an imported cache file's .films)
   live?: boolean                     // default: films === undefined. Fetch from `source` after mount
   corsProxy?: CorsProxy              // source 'scrape' only. Required for a browser fetch when live
+  showRating?: boolean               // default false. Owner rating + like on hover; needs a `sync` file with ratings
+  displayName?: string               // header name; default: the cache file's displayName (or the scraped one), then the username. Pass `cache.displayName` when seeding `films`
   className?: string                 // Shorthand for classNames.root
   classNames?: FavoritesClassNames
   emptyMessage?: string              // default "This profile has no favorites published."
@@ -229,6 +242,8 @@ Default user-facing messages (from `errorMessage`):
 6. Items with no slug, name, or link are skipped.
 7. `parseDom` and `parseCheerio` must return **identical** `Film[]` for the same HTML. Both call the shared `filmFromFields`.
 8. Custom (Patron) posters: `data-resolvable-poster-path` JSON carries `preferredAlternativePosterId`, `posteredBaseLink` and `cacheBustingKey`. `customPosterPath(attrs)` turns them into `{posteredBaseLink}poster/std/{id}/230/?k={key}`. That's the same request Letterboxd's own page JS makes, and it returns JSON `{ url, url2x }` with a hashed `alternative-poster` URL that can't be derived from the ID. It's validated strictly (`id` digits, `/film/<slug>/`, hex key) because the path goes through the bridge. Only the CLI uses it. `Film` and the parity in step 7 don't change, and live scrape shows the default posters (PLAN.md backlog).
+9. Owner rating and like (`parseOwnerViewingData`, cheerio, CLI only): on a films grid page, each `p.poster-viewingdata[data-item-uid="film:<id>"]` holds `span.rated-N` (N = 1..10, rating = N/2) and a `liked` span. A film with neither is watched but unrated. `a.next` means another page. The page is a normal profile-style page, so the same response classification applies. `parseDom` and `parseCheerio` (step 7) don't read it, so live scrape has no ratings.
+10. Display name: `h1.person-display-name .displayname .label` (fallback `.displayname`) holds the owner's chosen name. `cleanDisplayName` (in `parser.ts`) collapses whitespace and zero-width marks, and rejects empty or over-60-character names. `parseDisplayNameDom` and `parseDisplayNameCheerio` must agree. Live scrape reads it too; `getFavorites` still returns only `Film[]`.
 
 ---
 
@@ -249,6 +264,15 @@ Default user-facing messages (from `errorMessage`):
 ### Markup
 ```html
 <div class="lbf" data-username="…" data-state="loading|ready|empty|error">
+  <header class="lbf-header">                                           <!-- every state -->
+    <a class="lbf-header__link" href="https://letterboxd.com/{user}/" target="_blank" rel="noopener noreferrer"
+       title="{name} on Letterboxd">                                    <!-- invalid username: links to letterboxd.com -->
+      <span class="lbf-header__name">{name}</span>                     <!-- display name, else username; truncated with … -->
+    </a>
+    <span class="lbf-header__suffix">’s</span>                          <!-- not part of the link -->
+    <svg class="lbf-header__logo" aria-hidden="true">…</svg>            <!-- LetterboxdLogo: three dots, inline -->
+    <span class="lbf-header__suffix"><strong class="lbf-header__brand">Letterboxd</strong> favorites</span>
+  </header>
   <p class="lbf-status" role="status | alert(for error)">…</p>           <!-- non-ready states -->
   <ul class="lbf-row lbf-row--{align}" data-count="N">                 <!-- ready -->
     <li class="lbf-row__item">
@@ -259,6 +283,10 @@ Default user-facing messages (from `errorMessage`):
         <span class="lbf-card__overlay" aria-hidden="true">
           <span class="lbf-card__title">{title}</span>
           <span class="lbf-card__year">{year}</span>                     <!-- omitted if null -->
+          <span class="lbf-card__meta">                                  <!-- only with showRating and a rating or like -->
+            <span class="lbf-card__rating">★★★★½</span>                  <!-- omitted if unrated -->
+            <span class="lbf-card__like">♥</span>                        <!-- omitted if not liked -->
+          </span>
           <span class="lbf-card__cta">View on Letterboxd</span>
         </span>
       </a>
@@ -266,12 +294,14 @@ Default user-facing messages (from `errorMessage`):
   </ul>
 </div>
 ```
+- `aria-label` is `{title} ({year}), rated {n} out of 5, liked on Letterboxd`. The rating and like parts appear only with `showRating`, because the overlay is `aria-hidden`.
 - Keys: `film.id`, falling back to `film.slug`.
 - Image errors are handled with React state in `FilmCard` (`const [failed, setFailed]`), not DOM mutation.
 - Every class is merged with the matching `classNames` slot via `cn()` (clsx + tailwind-merge).
 
 ### Default styles (`styles.css`)
-- Use CSS custom properties on `.lbf` for theming (`--lbf-gap`, `--lbf-radius`, `--lbf-overlay`, `--lbf-text`, `--lbf-muted`, `--lbf-poster-bg`, `--lbf-max-poster-width`).
+- Use CSS custom properties on `.lbf` for theming (`--lbf-gap`, `--lbf-radius`, `--lbf-overlay`, `--lbf-text`, `--lbf-muted`, `--lbf-accent`, `--lbf-poster-bg`, `--lbf-max-poster-width`, plus the frame: `--lbf-bg`, `--lbf-border`, `--lbf-padding`, `--lbf-star`, `--lbf-like`, `--lbf-link-hover`, `--lbf-header-text`, `--lbf-logo-size`, `--lbf-font-family`). Defaults are Letterboxd's dark palette (`#14181c` background) and Letterboxd's own font stack (`Graphik, GraphikWeb, -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", Meiryo, sans-serif`). Graphik is a licensed typeface, so the package never bundles or hotlinks it: it is used only if the host page loads it, and otherwise the system fonts take over, as on Letterboxd itself.
+- **Frame:** `.lbf` is a dark box. The header is left-aligned with a bottom rule, all in white (`--lbf-header-text`), in the owner's own casing (no `text-transform`). The name link turns `--lbf-link-hover` on hover and "Letterboxd" is bold (`.lbf-header__brand`). Only `.lbf-header__name` has `overflow: hidden; text-overflow: ellipsis`, so `’s`, the logo and `Letterboxd favorites` always stay. The logo is inline between `’s` and `Letterboxd favorites`, `--lbf-logo-size` tall (default `1.15em`). It renders in every state (loading, empty, error, ready) so the box never changes shape.
 - **Poster width is the same for any count:** each item is `calc((100% - 3 * var(--lbf-gap)) / 4)`, capped by `--lbf-max-poster-width` (default `none`). 4 posters fill the row. 1–3 posters keep that width and are placed with `justify-content: flex-start | center | flex-end`.
 - Posters use a 2:3 aspect ratio (`aspect-ratio: 2 / 3`, `object-fit: cover`).
 - The overlay appears on `.lbf-card:hover` and `.lbf-card:focus-visible`, fades in, and respects `prefers-reduced-motion`.
@@ -313,6 +343,7 @@ Fixtures in `src/__fixtures__/` (minimal synthetic HTML matching the markup in �
 - `two-favorites.html`
 - `no-favorites.html`: profile without `#favourites`
 - `legacy-poster-list.html`: older `ul.poster-list` markup with `data-film-*` attributes
+- `films-year.html`: a films-grid page for the owner's rating and like: rated and liked, rated only, watched but unrated, liked only, plus a next-page link
 - `custom-posters.html`: one film with a custom poster and a placeholder `<img>`, one with no custom poster, and one with a custom poster already resolved in `<img src>` (the DOM-copy case)
 - `not-found.html` and `cloudflare-challenge.html`
 
@@ -328,11 +359,13 @@ Tests must cover:
   - `--from file` writes the expected JSON to the default path.
   - Custom posters: service and direct swap in the endpoint's URL, and `--default-posters` makes no poster requests. A failing endpoint, a non-CDN URL, bad JSON or a network error each keep the default and warn (exit 0). `file` mode warns for an unresolved custom poster but not for an already-resolved one.
   - `customPosterPath` accepts valid data and rejects bad JSON, a missing ID, a non-numeric ID, traversal or non-film base links, and a bad key.
+  - Owner rating and like: service and direct fill `rating`/`liked` from the films list for each film's year, pagination finds a film on page 2 and stops after 5 pages, each year page is requested once, an unwatched film gets `null`/`false`, a failing lookup warns and leaves the fields out (exit 0), `--skip-ratings` makes no requests, and `file` mode notes it and makes none. `parseOwnerViewingData` and `formatStars` are unit-tested.
   - `--out` and `--dry-run` work.
   - Service 404 and Cloudflare responses → exit 1.
   - An invalid username → exit 1 before any fetch.
   - No args → exit 2.
   - The output round-trips through `parseCache`.
+- Header: the text "`<name>`’s Letterboxd favorites" with the three-dot logo between (no circle, no footer), "Letterboxd" in a `<strong>` outside the link, exactly one link (the name only, not the "’s") to the profile (`@Foo/` → `foo`), the full name kept in the link's `title`, an invalid username still rendering it, the header in every state (loading, ready, empty, error), unique SVG clip ids per instance, and the `header`/`headerLink`/`logo` `classNames` slots. Display name: falls back to the username, comes from the cache file or the scraped profile, the `displayName` prop wins, and a username change drops the old name. `parseDisplayNameDom`/`parseDisplayNameCheerio` agree, `cleanDisplayName` is unit-tested, and `sync` saves `displayName` (omitted when the page has none). `showRating`: hidden by default, stars and heart when on, rating and like in the `aria-label`, read from the cache file.
 - `align` class and `data-count`, overlay content, link `href`, and the `classNames` merge (e.g. `classNames.card="rounded-none"` overrides a default Tailwind-style class).
 
 ---
@@ -344,12 +377,12 @@ The **README stays short** (title, thumbnail, summary, a data-source table, and 
 - Title, `public/patron_demo.png` (custom posters) as the project thumbnail, a one-paragraph summary, feature bullets and the non-affiliation disclaimer.
 - A short **table of the data-extraction approaches**: cached JSON (recommended), live scrape through the bridge, live scrape directly. The last two are labelled experimental.
 - **Usage**: explicit numbered steps from install to a rendered component, for each approach. Approach 1 (cached) shows the React and Next.js component code and the sync commands (bridge route and saved-page route). It mentions the `--default-posters` toggle with `public/base_demo.png` (standard posters) and links to the docs for the rest. Approaches 2 and 3 show their component code too.
-- Links to the docs, a brief Limitations list (sync freshness, scraping can break, Cloudflare, no ratings, terms-of-use note) and the license.
+- Links to the docs, a brief Limitations list (sync freshness, scraping can break, Cloudflare, ratings only from `sync`, terms-of-use note) and the license.
 
 `docs/`:
 - `cli.md`: all `sync` flags, the `--from` table, examples, exit codes and the cache file format.
 - `custom-posters.md`: Patron posters, `--default-posters`, and the DevTools "Copy outerHTML" route for saved pages.
-- `component.md`: props table, `classNames` slots, CSS variables and error types.
+- `component.md`: props table, `classNames` slots, the frame (header and logo), `showRating`, CSS variables and error types.
 - `live-scraping.md`: client `source="scrape"` with `corsProxy`, Next.js `getFavorites` with `export const dynamic = 'force-dynamic'`, the bridge as a runtime proxy, and the proxy recipes (a Next.js Route Handler and a ~15-line Cloudflare Worker; both forward only `letterboxd.com` profile paths and send browser-like headers, and the Worker adds `Access-Control-Allow-Origin`).
 - `how-it-works.md`: the scraping steps and their limits.
 - `development.md`: dev commands.
@@ -363,8 +396,8 @@ Every doc starts with a "Back to the README" link. Keep README links to docs wor
 - `dist/index.js` starts with `"use client";` and contains no `cheerio` or `node:` import. `dist/server.js` has no `"use client"`. `dist/cli.js` starts with `#!/usr/bin/env node`, has no `"use client"`, and is executable.
 - `node dist/cli.js sync rayyanaamir --from file --html <saved page>` writes a valid cache file. With the bridge running, `--from service` does too.
 - `npm run playground` shows the four films from the committed cache JSON by default, with no network or Python.
-- `npm run dev` demo: loads favorites for a real username via the dev proxy, shows the empty state for a profile without favorites and a not-found message for a fake username, and the align radio buttons visibly move 1–3 posters. Rating no longer appears anywhere.
-- `grep -ri rating src/` returns nothing (outside fixtures).
+- `npm run dev` demo: loads favorites for a real username via the dev proxy, shows the empty state for a profile without favorites and a not-found message for a fake username, and the align radio buttons visibly move 1–3 posters. The dark frame, header and logo show, and "Show rating" shows stars and a heart on hover.
+- Rating only appears in the owner-rating feature: `grep -ril rating src/` lists only `types.ts`, `cache.ts`, `cli.ts`, `parseCheerio.ts`, `rating.ts`, `FilmCard.tsx`, `LetterboxdFavorites.tsx` and tests.
 
 ## 11. Conventions
 - TypeScript strict, function components, named exports only.

@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import twoFavorites from '../__fixtures__/two-favorites.html?raw'
 import customPosters from '../__fixtures__/custom-posters.html?raw'
 import cloudflare from '../__fixtures__/cloudflare-challenge.html?raw'
 import fourFavorites from '../__fixtures__/four-favorites.html?raw'
@@ -230,7 +231,7 @@ describe('custom posters', () => {
 
   it('--default-posters makes no poster requests', async () => {
     const fetchFn = route(() => json({ url: CUSTOM }))
-    expect(await exec(['sync', 'foo', '--default-posters'], fetchFn)).toBe(0)
+    expect(await exec(['sync', 'foo', '--default-posters', '--skip-ratings'], fetchFn)).toBe(0)
     expect(fetchFn).toHaveBeenCalledTimes(1)
     expect((await written())[0]?.posterUrl).toContain('/film-poster/')
   })
@@ -260,6 +261,143 @@ describe('custom posters', () => {
   it('file: no warning when every custom poster is already resolved', async () => {
     await writeFile(join(cwd, 'saved.html'), fourFavorites)
     expect(await exec(['sync', 'foo', '--from', 'file', '--html', 'saved.html'])).toBe(0)
+    expect(err.join('')).not.toContain('Warning')
+  })
+})
+
+describe('owner rating and like', () => {
+  // The four-favorites fixture: Parasite 2019 (51400), Mad Max 2015 (12345), Spirited Away 2001 (9876), Heat 1995 (4321).
+  const entry = (id: string, rated?: number, liked = false) =>
+    `<li class="griditem"><div class="react-component" data-film-id="${id}"></div>` +
+    `<p class="poster-viewingdata" data-item-uid="film:${id}">` +
+    (rated ? `<span class="rating rated-${rated}"></span>` : '') +
+    (liked ? '<span class="like liked-micro icon-liked"></span>' : '') +
+    '</p></li>'
+  const yearPage = (entries: string[], next = false) =>
+    `<html><head><title>Films • Letterboxd</title></head><body><ul>${entries.join('')}</ul>${next ? '<a class="next" href="x">Older</a>' : ''}</body></html>`
+
+  function route(pages: Record<string, string>, status = 200) {
+    return vi.fn<typeof fetch>((input) => {
+      const url = String(input)
+      const year = /\/films\/year\/(\d{4})\/(page\/(\d+)\/)?$/.exec(url)
+      if (!year) return Promise.resolve(new Response(fourFavorites))
+      const key = `${year[1]}${year[3] ? `/${year[3]}` : ''}`
+      return Promise.resolve(new Response(pages[key] ?? yearPage([]), { status }))
+    })
+  }
+  const urls = (fn: ReturnType<typeof route>) => fn.mock.calls.map((c) => String(c[0]))
+  async function written() {
+    const text = await readFile(join(cwd, 'public/letterboxd-favorites/foo.json'), 'utf8')
+    return parseCache(JSON.parse(text), 'foo').films
+  }
+
+  const pages = {
+    '2019': yearPage([entry('51400', 10, true)]),
+    '2015': yearPage([entry('12345', 7)]),
+    '2001': yearPage([entry('9876')]), // watched, not rated, not liked
+    // 1995: Heat is not on the list at all (not watched)
+  }
+
+  it('service: fills in rating and like from the films list for each film\'s year', async () => {
+    const fetchFn = route(pages)
+    expect(await exec(['sync', 'foo', '--default-posters'], fetchFn)).toBe(0)
+    expect(urls(fetchFn)).toContain('http://127.0.0.1:8787/foo/films/year/2019/')
+    expect(await written()).toMatchObject([
+      { slug: 'parasite-2019', rating: 5, liked: true },
+      { slug: 'mad-max-fury-road', rating: 3.5, liked: false },
+      { slug: 'spirited-away', rating: null, liked: false },
+      { slug: 'heat', rating: null, liked: false },
+    ])
+    expect(out.join('')).toContain('Parasite (2019)  ★★★★★ ♥')
+    expect(out.join('')).toContain('Mad Max: Fury Road (2015)  ★★★½')
     expect(err.join('')).toBe('')
+  })
+
+  it('follows pagination until it finds the film', async () => {
+    const fetchFn = route({
+      ...pages,
+      '2019': yearPage([entry('1')], true),
+      '2019/2': yearPage([entry('51400', 8, true)]),
+    })
+    expect(await exec(['sync', 'foo', '--default-posters'], fetchFn)).toBe(0)
+    expect(urls(fetchFn)).toContain('http://127.0.0.1:8787/foo/films/year/2019/page/2/')
+    expect((await written())[0]).toMatchObject({ rating: 4, liked: true })
+  })
+
+  it('stops after 5 pages', async () => {
+    const endless = Object.fromEntries(
+      [...Array(10).keys()].map((n) => [n === 0 ? '2019' : `2019/${n + 1}`, yearPage([entry('1')], true)]),
+    )
+    const fetchFn = route(endless)
+    await exec(['sync', 'foo', '--default-posters'], fetchFn)
+    expect(urls(fetchFn).filter((u) => u.includes('/films/year/2019/'))).toHaveLength(5)
+  })
+
+  it('requests each year page once even when films share a year', async () => {
+    const fetchFn = route(pages)
+    await exec(['sync', 'foo', '--default-posters'], fetchFn)
+    const yearUrls = urls(fetchFn).filter((u) => u.includes('/films/year/'))
+    expect(new Set(yearUrls).size).toBe(yearUrls.length)
+  })
+
+  it('direct: requests letterboxd.com with browser-like headers', async () => {
+    const fetchFn = route(pages)
+    expect(await exec(['sync', 'foo', '--from', 'direct', '--default-posters'], fetchFn)).toBe(0)
+    const call = fetchFn.mock.calls.find((c) => String(c[0]).includes('/films/year/2019/'))
+    expect(String(call?.[0])).toBe('https://letterboxd.com/foo/films/year/2019/')
+    expect((call?.[1]?.headers as Record<string, string>)['User-Agent']).toContain('Mozilla')
+    expect((await written())[0]).toMatchObject({ rating: 5, liked: true })
+  })
+
+  it('a failing lookup warns, leaves the fields out, and still exits 0', async () => {
+    const fetchFn = route(pages, 502)
+    expect(await exec(['sync', 'foo', '--default-posters'], fetchFn)).toBe(0)
+    expect(err.join('')).toContain("couldn't load the rating for Parasite")
+    const films = await written()
+    expect(films[0]).not.toHaveProperty('rating')
+    expect(films[0]).not.toHaveProperty('liked')
+  })
+
+  it('--skip-ratings makes no films-list requests and saves no ratings', async () => {
+    const fetchFn = route(pages)
+    expect(await exec(['sync', 'foo', '--default-posters', '--skip-ratings'], fetchFn)).toBe(0)
+    expect(urls(fetchFn).filter((u) => u.includes('/films/year/'))).toEqual([])
+    expect((await written())[0]).not.toHaveProperty('rating')
+  })
+
+  it('file: notes that a saved page has no ratings and makes no requests', async () => {
+    await writeFile(join(cwd, 'saved.html'), fourFavorites)
+    const fetchFn = route(pages)
+    expect(await exec(['sync', 'foo', '--from', 'file', '--html', 'saved.html'], fetchFn)).toBe(0)
+    expect(err.join('')).toContain('ratings and likes need --from service')
+    expect(fetchFn).not.toHaveBeenCalled()
+    expect((await written())[0]).not.toHaveProperty('rating')
+  })
+})
+
+describe('display name', () => {
+  const read = async () =>
+    JSON.parse(await readFile(join(cwd, 'public/letterboxd-favorites/foo.json'), 'utf8')) as Record<string, unknown>
+
+  it("saves the profile owner's chosen name and shows it in the summary", async () => {
+    await writeFile(join(cwd, 'saved.html'), fourFavorites)
+    expect(await exec(['sync', 'foo', '--from', 'file', '--html', 'saved.html'])).toBe(0)
+    const cache = await read()
+    expect(cache.displayName).toBe('Fan Foo')
+    expect(parseCache(cache, 'foo').displayName).toBe('Fan Foo')
+    expect(out.join('')).toContain('Saved 4 favorites for foo (Fan Foo):')
+  })
+
+  it('also works through the service', async () => {
+    const fetchFn = serve(fourFavorites)
+    expect(await exec(['sync', 'foo', '--default-posters', '--skip-ratings'], fetchFn)).toBe(0)
+    expect((await read()).displayName).toBe('Fan Foo')
+  })
+
+  it('leaves it out when the page has none', async () => {
+    await writeFile(join(cwd, 'saved.html'), twoFavorites)
+    expect(await exec(['sync', 'foo', '--from', 'file', '--html', 'saved.html'])).toBe(0)
+    expect(await read()).not.toHaveProperty('displayName')
+    expect(out.join('')).toContain('Saved 2 favorites for foo:')
   })
 })

@@ -297,3 +297,214 @@ describe('LetterboxdFavorites (cache source, default)', () => {
     expect(signals[1]?.aborted).toBe(false)
   })
 })
+
+describe('LetterboxdFavorites header ("<name>’s [logo] <b>Letterboxd</b> favorites")', () => {
+  const json = (films: Film[], displayName?: string, username = 'foo') =>
+    Promise.resolve(
+      new Response(JSON.stringify(createCache(username, films, new Date(), displayName))),
+    )
+  const link = (container: HTMLElement) =>
+    container.querySelector<HTMLAnchorElement>('.lbf-header__link')
+  const header = (container: HTMLElement) => container.querySelector<HTMLElement>('.lbf-header')!
+
+  it('reads "<username>’s Letterboxd favorites"', () => {
+    const { container } = render(<LetterboxdFavorites username="@Foo/" films={seed} />)
+    expect(container.querySelector('.lbf-header__name')?.textContent).toBe('foo')
+    expect(header(container).textContent).toBe('foo’s Letterboxd favorites')
+  })
+
+  it('links only the name to the profile, not the "’s" or the rest', () => {
+    const { container } = render(<LetterboxdFavorites username="@Foo/" films={seed} />)
+    expect(container.querySelectorAll('.lbf-header a')).toHaveLength(1)
+    expect(link(container)?.getAttribute('href')).toBe('https://letterboxd.com/foo/')
+    expect(link(container)?.getAttribute('target')).toBe('_blank')
+    expect(link(container)?.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(link(container)?.textContent).toBe('foo')
+    expect(link(container)?.contains(container.querySelector('svg'))).toBe(false)
+  })
+
+  it('makes "Letterboxd" bold', () => {
+    const { container } = render(<LetterboxdFavorites username="foo" films={seed} />)
+    const brand = container.querySelector('.lbf-header__brand')
+    expect(brand?.tagName).toBe('STRONG')
+    expect(brand?.textContent).toBe('Letterboxd')
+    expect(brand?.closest('a')).toBeNull()
+  })
+
+  it('puts the three-dot logo between the name and "Letterboxd favorites", with no circle', () => {
+    const { container } = render(<LetterboxdFavorites username="foo" films={seed} />)
+    const parts = [...header(container).children].map(
+      (el) => el.tagName.toLowerCase() + ':' + (el.textContent || ''),
+    )
+    expect(parts).toEqual(['a:foo', 'span:’s', 'svg:', 'span:Letterboxd favorites'])
+    const svg = container.querySelector('.lbf-header__logo')!
+    expect(svg.getAttribute('aria-hidden')).toBe('true')
+    expect(svg.querySelector('circle')).toBeNull()
+    expect(svg.querySelectorAll('ellipse')).toHaveLength(3)
+    expect(container.querySelector('footer, .lbf-footer')).toBeNull()
+  })
+
+  it('keeps the full text in the title so a long, truncated name is still readable', () => {
+    const long = 'a'.repeat(30)
+    const { container } = render(<LetterboxdFavorites username={long} films={seed} />)
+    expect(link(container)?.getAttribute('title')).toBe(`${long} on Letterboxd`)
+  })
+
+  it('still renders the header for an invalid username, linking to Letterboxd', async () => {
+    const { container } = render(<LetterboxdFavorites username="../x" />)
+    expect(link(container)?.getAttribute('href')).toBe('https://letterboxd.com/')
+    expect(header(container).textContent).toBe('../x’s Letterboxd favorites')
+    await screen.findByRole('alert')
+  })
+
+  it('shows the header in every state (loading, ready, empty, error)', async () => {
+    const check = (container: HTMLElement) => {
+      expect(header(container).querySelector('svg')).toBeTruthy()
+      expect(header(container).textContent).toContain('Letterboxd favorites')
+    }
+    fetchMock.mockImplementation(() => json(seed))
+    const first = render(<LetterboxdFavorites username="foo" />)
+    expect(first.container.querySelector('.lbf')?.getAttribute('data-state')).toBe('loading')
+    check(first.container)
+    await screen.findAllByText('Seed Film')
+    check(first.container)
+    cleanup()
+    check(render(<LetterboxdFavorites username="foo" films={[]} />).container)
+    cleanup()
+    fetchMock.mockImplementation(() => respond('nope', 404))
+    const failed = render(<LetterboxdFavorites username="foo" />)
+    await screen.findByRole('alert')
+    check(failed.container)
+  })
+
+  it('gives each logo instance its own clip ids', () => {
+    const { container } = render(
+      <>
+        <LetterboxdFavorites username="a" films={seed} />
+        <LetterboxdFavorites username="b" films={seed} />
+      </>,
+    )
+    const ids = [...container.querySelectorAll('clipPath')].map((el) => el.id)
+    expect(ids).toHaveLength(4)
+    expect(new Set(ids).size).toBe(4)
+  })
+
+  it('merges the header, headerLink and logo classNames slots', () => {
+    const { container } = render(
+      <LetterboxdFavorites
+        username="foo"
+        films={seed}
+        classNames={{ header: 'h-x', headerLink: 'hl-x', logo: 'logo-x' }}
+      />,
+    )
+    expect(container.querySelector('.lbf-header')?.className).toContain('h-x')
+    expect(link(container)?.className).toContain('hl-x')
+    expect(container.querySelector('.lbf-header__logo')?.getAttribute('class')).toContain('logo-x')
+  })
+
+  describe('display name', () => {
+    const name = (container: HTMLElement) => container.querySelector('.lbf-header__name')?.textContent
+
+    it('falls back to the username when there is none', async () => {
+      fetchMock.mockImplementation(() => json(seed))
+      const { container } = render(<LetterboxdFavorites username="foo" />)
+      await screen.findAllByText('Seed Film')
+      expect(name(container)).toBe('foo')
+    })
+
+    it('uses the display name from the cache file', async () => {
+      fetchMock.mockImplementation(() => json(seed, 'RR'))
+      const { container } = render(<LetterboxdFavorites username="foo" />)
+      expect(name(container)).toBe('foo') // username while loading
+      await waitFor(() => expect(name(container)).toBe('RR'))
+      expect(header(container).textContent).toBe('RR’s Letterboxd favorites')
+      expect(link(container)?.textContent).toBe('RR')
+      expect(link(container)?.getAttribute('href')).toBe('https://letterboxd.com/foo/')
+      expect(link(container)?.getAttribute('title')).toBe('RR on Letterboxd')
+    })
+
+    it('lets the displayName prop win, which is how a seeded cache passes it', () => {
+      const { container } = render(
+        <LetterboxdFavorites username="foo" films={seed} displayName="  Fan Foo " />,
+      )
+      expect(name(container)).toBe('Fan Foo')
+    })
+
+    it('reads it from the profile when scraping', async () => {
+      const { container } = render(
+        <LetterboxdFavorites username="foo" source="scrape" corsProxy={proxy} />,
+      )
+      await waitFor(() => expect(name(container)).toBe('Fan Foo'))
+    })
+
+    it('drops the previous user\'s name when the username changes', async () => {
+      fetchMock.mockImplementation((url: string) =>
+        url.endsWith('/first.json') ? json(seed, 'First Name', 'first') : new Promise(() => {}),
+      )
+      const { container, rerender } = render(<LetterboxdFavorites username="first" />)
+      await waitFor(() => expect(name(container)).toBe('First Name'))
+      rerender(<LetterboxdFavorites username="second" />)
+      expect(name(container)).toBe('second')
+    })
+  })
+})
+
+describe('LetterboxdFavorites rating and like (showRating)', () => {
+  const rated: Film[] = [
+    { ...seed[0]!, id: '1', title: 'Five', slug: 'five', rating: 5, liked: true },
+    { ...seed[0]!, id: '2', title: 'Half', slug: 'half', rating: 3.5, liked: false },
+    { ...seed[0]!, id: '3', title: 'Unrated', slug: 'unrated', rating: null, liked: true },
+    { ...seed[0]!, id: '4', title: 'Plain', slug: 'plain' },
+  ]
+  const cards = (container: HTMLElement) =>
+    [...container.querySelectorAll<HTMLElement>('.lbf-card')]
+
+  it('hides the rating and like by default', () => {
+    const { container } = render(<LetterboxdFavorites username="foo" films={rated} />)
+    expect(container.querySelector('.lbf-card__meta')).toBeNull()
+    expect(container.querySelector('.lbf-card__rating')).toBeNull()
+    expect(cards(container)[0]?.getAttribute('aria-label')).toBe('Five (1999) on Letterboxd')
+  })
+
+  it('shows stars and a heart in the overlay when showRating is on', () => {
+    const { container } = render(<LetterboxdFavorites username="foo" films={rated} showRating />)
+    const [five, half, unrated, plain] = cards(container)
+    expect(five?.querySelector('.lbf-card__rating')?.textContent).toBe('★★★★★')
+    expect(five?.querySelector('.lbf-card__like')?.textContent).toBe('♥')
+    expect(half?.querySelector('.lbf-card__rating')?.textContent).toBe('★★★½')
+    expect(half?.querySelector('.lbf-card__like')).toBeNull()
+    expect(unrated?.querySelector('.lbf-card__rating')).toBeNull()
+    expect(unrated?.querySelector('.lbf-card__like')).toBeTruthy()
+    expect(plain?.querySelector('.lbf-card__meta')).toBeNull()
+  })
+
+  it('puts the rating and like in the aria-label, since the overlay is hidden', () => {
+    const { container } = render(<LetterboxdFavorites username="foo" films={rated} showRating />)
+    const [five, half, unrated, plain] = cards(container)
+    expect(five?.getAttribute('aria-label')).toBe('Five (1999), rated 5 out of 5, liked on Letterboxd')
+    expect(half?.getAttribute('aria-label')).toBe('Half (1999), rated 3.5 out of 5 on Letterboxd')
+    expect(unrated?.getAttribute('aria-label')).toBe('Unrated (1999), liked on Letterboxd')
+    expect(plain?.getAttribute('aria-label')).toBe('Plain (1999) on Letterboxd')
+  })
+
+  it('reads the rating from the cache file', async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify(createCache('foo', rated)))),
+    )
+    const { container } = render(<LetterboxdFavorites username="foo" showRating />)
+    await waitFor(() => expect(container.querySelectorAll('.lbf-card__rating')).toHaveLength(2))
+  })
+
+  it('merges the rating and like classNames slots', () => {
+    const { container } = render(
+      <LetterboxdFavorites
+        username="foo"
+        films={rated}
+        showRating
+        classNames={{ rating: 'r-x', like: 'l-x' }}
+      />,
+    )
+    expect(container.querySelector('.lbf-card__rating')?.className).toContain('r-x')
+    expect(container.querySelector('.lbf-card__like')?.className).toContain('l-x')
+  })
+})

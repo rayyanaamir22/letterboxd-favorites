@@ -45,6 +45,32 @@ describe('createCache / parseCache', () => {
     ).toBeNull()
   })
 
+  it('accepts and keeps the owner rating and like', () => {
+    const rated = { ...film, rating: 4.5, liked: true }
+    expect(parseCache(createCache('foo', [rated]), 'foo').films[0]).toEqual(rated)
+    expect(parseCache(createCache('foo', [{ ...film, rating: null, liked: false }]), 'foo').films[0]).toMatchObject({
+      rating: null,
+      liked: false,
+    })
+  })
+
+  it('keeps an optional displayName and rejects a bad one', () => {
+    const cache = createCache('foo', [film], new Date(), 'RR')
+    expect(cache.displayName).toBe('RR')
+    expect(parseCache(cache, 'foo').displayName).toBe('RR')
+    expect(parseCache(createCache('foo', [film]), 'foo')).not.toHaveProperty('displayName')
+    expect(createCache('foo', [film], new Date(), null)).not.toHaveProperty('displayName')
+    for (const bad of ['', '   ', 5, null]) {
+      expect(() => parseCache({ ...cache, displayName: bad }, 'foo')).toThrow(InvalidCacheError)
+    }
+  })
+
+  it('keeps files without rating or like valid (they are optional)', () => {
+    const parsed = parseCache(createCache('foo', [film]), 'foo').films[0]
+    expect(parsed).not.toHaveProperty('rating')
+    expect(parsed).not.toHaveProperty('liked')
+  })
+
   const valid = () => JSON.parse(JSON.stringify(createCache('foo', [film]))) as Record<string, unknown>
 
   it.each([
@@ -64,6 +90,11 @@ describe('createCache / parseCache', () => {
     ['a missing year', () => ({ ...valid(), films: [{ ...film, year: undefined }] })],
     ['a numeric slug', () => ({ ...valid(), films: [{ ...film, slug: 5 }] })],
     ['a missing url', () => ({ ...valid(), films: [{ ...film, url: undefined }] })],
+    ['a rating above 5', () => ({ ...valid(), films: [{ ...film, rating: 6 }] })],
+    ['a rating of 0', () => ({ ...valid(), films: [{ ...film, rating: 0 }] })],
+    ['a rating off the half steps', () => ({ ...valid(), films: [{ ...film, rating: 0.3 }] })],
+    ['a string rating', () => ({ ...valid(), films: [{ ...film, rating: '5' }] })],
+    ['a non-boolean liked', () => ({ ...valid(), films: [{ ...film, liked: 'yes' }] })],
     ['a numeric posterUrl', () => ({ ...valid(), films: [{ ...film, posterUrl: 3 }] })],
   ])('rejects %s', (_name, build) => {
     expect(() => parseCache(build(), 'foo')).toThrow(InvalidCacheError)

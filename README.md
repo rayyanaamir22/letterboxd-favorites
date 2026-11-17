@@ -8,9 +8,10 @@ Letterboxd has no API and blocks plain requests with Cloudflare. So you fetch yo
 
 Features:
 - Same left-to-right order as your profile. 1–3 favorites align `left`, `center` or `right`.
-- Hover or focus a poster for the title, year and a "View on Letterboxd" link.
+- Looks like the Letterboxd app: a dark box headed "`<your name>`'s ●●● **Letterboxd** favorites", with your chosen display name (like "RR", linked to your profile) and Letterboxd's dots.
+- Hover or focus a poster for the title, year and a "View on Letterboxd" link. Optionally, your own rating and like too.
 - Custom (Patron) posters by default, with a flag for the standard ones.
-- Unstyled apart from an optional stylesheet. Every element takes extra classes.
+- Styled by an optional stylesheet, with Letterboxd's font stack. Every colour and the font are CSS variables, and every element takes extra classes.
 - Live scraping is available as an **experimental** fallback.
 
 > Not affiliated with or endorsed by Letterboxd. Letterboxd is a trademark of Letterboxd Limited.
@@ -88,11 +89,25 @@ Features:
    import cache from '@/public/letterboxd-favorites/<your-username>.json'
 
    export default function Page() {
-     return <LetterboxdFavorites username="<your-username>" films={cache.films} />
+     return (
+       <LetterboxdFavorites
+         username="<your-username>"
+         films={cache.films}
+         displayName={cache.displayName}
+       />
+     )
    }
    ```
 
 6. **To update it,** change your favorites on Letterboxd, re-run step 3, then commit and deploy.
+
+**Show your rating and like.** Add `showRating` and each poster's hover shows your rating (`★★★★½`) and a heart if you liked it:
+
+```tsx
+<LetterboxdFavorites username="<your-username>" showRating />
+```
+
+`sync` saves them for you (one extra request per release year, through the bridge). To skip that lookup, run it with `--skip-ratings`. A saved page can't provide them, and live scraping doesn't show them.
 
 **Custom or standard posters.** `sync` saves your custom (Patron) posters by default. To use Letterboxd's standard posters instead, add `--default-posters`:
 
@@ -167,7 +182,7 @@ Letterboxd usually blocks this with a 403 (`LetterboxdBlockedError`), especially
 
 - Synced favorites (and posters) are only as fresh as your last `sync`.
 - This is scraping, so it can break whenever Letterboxd changes its markup, and Cloudflare may block requests.
-- No ratings: the profile's favorites section doesn't include them.
+- Only your own rating and like are available, and only from `sync`. The favorites section doesn't include them, and there are no reviews or average ratings.
 - Scraping public profile pages may conflict with Letterboxd's terms of use. The MIT license covers this package's code only, not Letterboxd's data, content or trademarks.
 
 ## License

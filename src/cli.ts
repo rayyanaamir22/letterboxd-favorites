@@ -10,7 +10,13 @@ import {
   LETTERBOXD_ORIGIN,
   normalizeUsername,
 } from './utils/fetcher'
-import { type FavoriteRef, parseFavoriteRefsCheerio } from './utils/parseCheerio'
+import {
+  type FavoriteRef,
+  parseDisplayNameCheerio,
+  parseFavoriteRefsCheerio,
+  parseOwnerViewingData,
+} from './utils/parseCheerio'
+import { formatStars } from './utils/rating'
 
 export interface CliDeps {
   /** Defaults to the global `fetch`. */
@@ -39,6 +45,7 @@ Options:
   --out <path>                  Output file (default: public/${DEFAULT_CACHE_DIR}/<username>.json)
   --default-posters             Keep Letterboxd's default posters, even where the
                                 profile owner picked custom (Patron) ones
+  --skip-ratings                Don't look up the owner's rating and like for each favorite
   --dry-run                     Print the JSON instead of writing it
   -h, --help                    Show this help
 
@@ -50,6 +57,10 @@ Sources:
 Custom posters: with service (or direct), favorites that use a custom poster get
 that poster (one extra request each). A page saved as "HTML only" can't resolve
 them; save the rendered page instead (DevTools > Elements > <html> > Copy outerHTML).
+
+Ratings: with service (or direct), each favorite's rating and like (the profile owner's,
+from their films list for the film's release year) is saved too, one extra request per
+year. The component shows them on hover with showRating. A saved page can't provide them.
 `
 
 class UsageError extends Error {}
@@ -149,6 +160,72 @@ async function resolveCustomPosters(
   return custom
 }
 
+const MAX_RATING_PAGES = 5
+
+/**
+ * Adds the owner's rating and like to each film, read from their films list for the
+ * film's release year (`/<user>/films/year/<year>/`). Unlike diary pages, this lists every
+ * watched film. Best effort: a failure leaves the fields out and prints a warning.
+ */
+async function resolveOwnerRatings(
+  films: Film[],
+  username: string,
+  source: Source,
+  serviceBase: string,
+  fetchFn: typeof fetch,
+  stderr: (text: string) => void,
+): Promise<void> {
+  if (source === 'file') {
+    stderr('Note: ratings and likes need --from service (or direct); a saved page has none.\n')
+    return
+  }
+
+  const base = source === 'service' ? serviceBase : LETTERBOXD_ORIGIN
+  const pages = new Map<string, ReturnType<typeof parseOwnerViewingData>>()
+
+  async function loadPage(year: number, page: number) {
+    const key = `${year}/${page}`
+    const cached = pages.get(key)
+    if (cached) return cached
+    const url = `${base}/${username}/films/year/${year}/${page > 1 ? `page/${page}/` : ''}`
+    const response = await fetchFn(url, {
+      cache: 'no-store',
+      headers: source === 'direct' ? LETTERBOXD_HEADERS : undefined,
+    })
+    const parsed = parseOwnerViewingData(
+      classifyResponse(response.status, await response.text(), username),
+    )
+    pages.set(key, parsed)
+    return parsed
+  }
+
+  for (const film of films) {
+    if (!film.year) continue
+    try {
+      let found = false
+      for (let page = 1; page <= MAX_RATING_PAGES && !found; page += 1) {
+        const { byId, hasNextPage } = await loadPage(film.year, page)
+        const viewing = byId.get(film.id)
+        if (viewing) {
+          film.rating = viewing.rating
+          film.liked = viewing.liked
+          found = true
+        } else if (!hasNextPage) {
+          break
+        }
+      }
+      if (!found) {
+        // Not on the owner's watched list for that year: no rating, not liked.
+        film.rating = null
+        film.liked = false
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      stderr(`Warning: couldn't load the rating for ${film.title} (${reason}). Left it out.\n`)
+    }
+  }
+}
+
 /** Testable CLI core. Returns the process exit code. */
 export async function run(argv: string[], deps: CliDeps = {}): Promise<number> {
   const stdout = deps.stdout ?? ((text: string) => void process.stdout.write(text))
@@ -165,6 +242,7 @@ export async function run(argv: string[], deps: CliDeps = {}): Promise<number> {
     out: string | undefined
     'dry-run': boolean
     'default-posters': boolean
+    'skip-ratings': boolean
     help: boolean
   }
 
@@ -179,6 +257,7 @@ export async function run(argv: string[], deps: CliDeps = {}): Promise<number> {
         out: { type: 'string' },
         'dry-run': { type: 'boolean', default: false },
         'default-posters': { type: 'boolean', default: false },
+        'skip-ratings': { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h', default: false },
       },
     })
@@ -221,7 +300,18 @@ export async function run(argv: string[], deps: CliDeps = {}): Promise<number> {
           fetchFn,
           stderr,
         )
-    const json = `${JSON.stringify(createCache(normalized, films, deps.now), null, 2)}\n`
+    if (!values['skip-ratings']) {
+      await resolveOwnerRatings(
+        films,
+        normalized,
+        source,
+        values['service-url'].replace(/\/+$/, ''),
+        fetchFn,
+        stderr,
+      )
+    }
+    const displayName = parseDisplayNameCheerio(html)
+    const json = `${JSON.stringify(createCache(normalized, films, deps.now, displayName), null, 2)}\n`
 
     if (values['dry-run']) {
       stdout(json)
@@ -235,10 +325,14 @@ export async function run(argv: string[], deps: CliDeps = {}): Promise<number> {
       const temp = `${out}.${process.pid}.tmp`
       await writeFile(temp, json, 'utf8')
       await rename(temp, out)
-      stdout(`Saved ${films.length} favorite${films.length === 1 ? '' : 's'} for ${normalized}:\n`)
+      const who = displayName && displayName !== normalized ? `${normalized} (${displayName})` : normalized
+      stdout(`Saved ${films.length} favorite${films.length === 1 ? '' : 's'} for ${who}:\n`)
       for (const film of films) {
         const label = `${film.title}${film.year ? ` (${film.year})` : ''}`
-        stdout(`  ${label}${custom.has(film) ? '  [custom poster]' : ''}\n`)
+        const stars = film.rating ? `  ${formatStars(film.rating)}` : ''
+        stdout(
+          `  ${label}${stars}${film.liked ? ' ♥' : ''}${custom.has(film) ? '  [custom poster]' : ''}\n`,
+        )
       }
       stdout(`→ ${out}\n`)
     }

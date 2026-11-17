@@ -1,3 +1,4 @@
+/* Letterboxd's dark palette. Override any variable on `.lbf` (or a parent) to restyle. */
 .lbf {
   --lbf-gap: 0.65rem;
   --lbf-radius: 4px;
@@ -7,10 +8,83 @@
   --lbf-accent: #00c030;
   --lbf-poster-bg: #2c3440;
   --lbf-max-poster-width: none;
+  --lbf-bg: #14181c;
+  --lbf-border: #2c3440;
+  --lbf-padding: 0.9rem;
+  --lbf-star: #00e054;
+  --lbf-like: #ff8000;
+  --lbf-link-hover: #40bcf4;
+  --lbf-header-text: #ffffff;
+  --lbf-logo-size: 1.15em; /* the logo's height, relative to the header text */
+  /* Letterboxd's own stack. Graphik is licensed, so it is used only if the page loads it. */
+  --lbf-font-family:
+    Graphik, GraphikWeb, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Hiragino Sans', Meiryo, sans-serif;
+  box-sizing: border-box;
   width: 100%;
-  font-family:
-    Graphik, 'Graphik Webfont', -apple-system, BlinkMacSystemFont, 'Segoe UI',
-    sans-serif;
+  padding: var(--lbf-padding);
+  border-radius: calc(var(--lbf-radius) * 2);
+  background: var(--lbf-bg);
+  color: var(--lbf-text);
+  font-family: var(--lbf-font-family);
+}
+
+/* Top left: "<name>'s [logo] Letterboxd favorites". Only the name links to the profile, and only it is truncated. */
+.lbf-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  overflow: hidden;
+  margin: 0 0 0.7rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--lbf-border);
+  color: var(--lbf-header-text);
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+}
+
+.lbf-header__link {
+  display: inline-flex;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.16s ease;
+}
+
+.lbf-header__link:hover,
+.lbf-header__link:focus-visible {
+  color: var(--lbf-link-hover);
+}
+
+.lbf-header__link:focus-visible {
+  outline: 2px solid var(--lbf-accent);
+  outline-offset: 2px;
+}
+
+.lbf-header__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lbf-header__suffix {
+  flex: none;
+  white-space: nowrap;
+}
+
+.lbf-header__brand {
+  font-weight: 700;
+}
+
+/* Letterboxd's three dots, between "<name>'s" and "Letterboxd favorites". */
+.lbf-header__logo {
+  display: block;
+  flex: none;
+  width: auto;
+  height: var(--lbf-logo-size);
+  margin: 0 0.45em;
 }
 
 .lbf-status {
@@ -131,6 +205,24 @@
 .lbf-card__cta {
   color: var(--lbf-accent);
   margin-top: 0.2rem;
+}
+
+/* The profile owner's rating and like (showRating). */
+.lbf-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+
+.lbf-card__rating {
+  color: var(--lbf-star);
+  letter-spacing: 0.05em;
+}
+
+.lbf-card__like {
+  color: var(--lbf-like);
 }
 
 .lbf-card:focus-visible {
